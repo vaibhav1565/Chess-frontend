@@ -1,13 +1,16 @@
 import { useCallback, useState } from "react";
 import { useSocket } from "../hooks/useSocket";
 import { Chess } from "chess.js";
+import { DEFAULT_POSITION } from "chess.js";
 import { Chessboard } from "react-chessboard";
 import { MOVE, ASSIGN_COLOR, DISCONNECT } from "../utils/messages";
 
 
 const Game = () => {
   const [chess] = useState(new Chess());
-  const [board, setBoard] = useState(chess.board());
+  const [history, setHistory] = useState(chess.history({verbose: true}));
+  const [chessState, setChessState] = useState(-1);
+
   const [playerColor, setPlayerColor] = useState(null);
   const [status, setStatus] = useState("Waiting for another player to join...");
   const [gameOutcome, setGameOutcome] = useState(null);
@@ -28,16 +31,11 @@ const Game = () => {
       }
 
       case MOVE: {
-        // console.log(playerColor);
-        // console.log(socket);
-        // if (!playerColor) {
-        //   console.warn("Ignoring move: playerColor is not set yet.");
-        //   return;
-        // }
         const move = message.payload;
         try {
           chess.move(move);
-          setBoard(chess.board());
+          setHistory(chess.history({verbose: true}));
+          setChessState(chessState => chessState + 1);
           handleGameOver();
         } catch (e) {
           console.log("Invalid move");
@@ -62,17 +60,21 @@ const Game = () => {
   const socket = useSocket(handleMessage);
 
   function handlePieceDrop(sourceSquare, targetSquare) {
-    // console.log("handlePieceDrop");
-    // console.log(playerColor);
-    // console.log(socket);
-    if (chess.turn() !== playerColor) return;
+    if (chessState != history.length - 1) {
+      setChessState(history.length - 1);
+      return false;
+    }
+    if (chess.turn() !== playerColor) {
+      setChessState(history.length - 1);
+      return false;
+    }
     try {
       chess.move({
         from: sourceSquare,
         to: targetSquare
       });
-      setBoard(chess.board());
-
+      setHistory(chess.history({ verbose: true}));
+      setChessState((chessState) => chessState + 1);
       try {
         if (socket.readyState === WebSocket.OPEN) {
           socket.send(
@@ -94,18 +96,39 @@ const Game = () => {
     }
   }
 
-  function transformChessboard(board) {
-    const result = {};
-
-    board.forEach((row) => {
-      row.forEach((piece) => {
-        if (piece) {
-          result[piece.square] = piece.color + piece.type.toUpperCase();
-        }
+  function handlePromotionPieceSelect(piece, promoteFromSquare, promoteToSquare) {
+    try {
+      chess.move({
+        from: promoteFromSquare,
+        to: promoteToSquare,
+        promotion: piece[1].toLowerCase(),
       });
-    });
-
-    return result;
+      setHistory(chess.history({ verbose: true}));
+      setChessState((chessState) => chessState + 1);
+      try {
+        if (socket.readyState === WebSocket.OPEN) {
+          socket.send(
+            JSON.stringify({
+              type: MOVE,
+              payload: {
+                from: promoteFromSquare,
+                to: promoteToSquare,
+                promotion: piece[1].toLowerCase(),
+              },
+            })
+          );
+        }
+        handleGameOver();
+        return true;
+      } catch (e) {
+        console.log(e);
+        return false;
+      }
+    } catch (e) {
+      console.log("Invalid move");
+      console.log(e);
+      return false;
+    }
   }
 
   function handleGameOver() {
@@ -126,7 +149,6 @@ const Game = () => {
     console.log(playerColor);
     setGameOutcome(message);
   }
-
   return (
     <div className="h-screen flex flex-col items-center justify-center">
       <div>
@@ -136,22 +158,72 @@ const Game = () => {
         </p>
       </div>
       <div>
-        <div>
+        <div className="flex">
           <Chessboard
             id="BasicBoard"
             boardWidth={500}
-            position={transformChessboard(board)}
+            position={
+              history.length > 0 ? history[chessState].after : DEFAULT_POSITION
+            }
             boardOrientation={
               playerColor === null || playerColor === "w" ? "white" : "black"
             }
-            onPieceDrop={(sourceSquare, targetSquare) =>
-              handlePieceDrop(sourceSquare, targetSquare)
-            }
+            onPieceDrop={handlePieceDrop}
+            onPromotionPieceSelect={handlePromotionPieceSelect}
             animationDuration={0}
-            customArrowColor="rgb(255,170,0)"
           />
+          <div>
+            <ul className="overflow-y-scroll h-[450px] w-48 border-2 border-black">
+              {(function () {
+                let result = [];
+                for (let x = 0; x < chess.history().length; x += 2) {
+                  result.push(chess.history().slice(x, x + 2));
+                }
+                return result;
+              })().map((h, i) => (
+                <li
+                  key={i}
+                  className="grid grid-cols-3 p-2 bg-gray-100 border-b border-gray-300 rounded-lg shadow-sm hover:bg-gray-200 transition-colors duration-200"
+                >
+                  <span>{i + ". "}</span>
+                  <span
+                    className={`w-min cursor-pointer ${
+                      2 * i === chessState ? "bg-gray-400" : ""
+                    }`}
+                    onClick={() => setChessState(2 * i)}
+                  >
+                    {h[0]}
+                  </span>
+                  {h[1] && (
+                    <span
+                      className={`w-min cursor-pointer ${
+                        2 * i + 1 === chessState ? "bg-gray-400" : ""
+                      }`}
+                      onClick={() => setChessState(2 * i + 1)}
+                    >
+                      {h[1]}
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
+            <div className="w-48 flex justify-evenly">
+              <button
+                className="cursor-pointer px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+                onClick={() => setChessState((chessState) => chessState > -1 ? chessState - 1 : chessState)}
+              >
+                &lt;
+              </button>
+              <button
+                className="cursor-pointer px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+                onClick={() => setChessState((chessState) => chessState < history.length - 1 ? chessState + 1 : chessState)}
+              >
+                &gt;
+              </button>
+            </div>
+          </div>
         </div>
-        <p>Total moves: {chess.history().length}</p>
+        <p>Total moves: {history.length}</p>
       </div>
       <div>{gameOutcome || " "}</div>
     </div>
