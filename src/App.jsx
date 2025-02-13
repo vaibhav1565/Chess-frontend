@@ -1,15 +1,21 @@
-// import { Chessboard } from "react-chessboard";
+import { BrowserRouter, Route, Routes } from "react-router-dom";
 import Game from "./components/Game";
+import Home from "./components/Home";
+import { GoogleOAuthProvider } from "@react-oauth/google";
+import { Provider } from "react-redux";
+import appStore from "./utils/appStore";
 
 export default function App() {
   return (
-    // <div className="h-screen flex items-center justify-center">
-    //   <div>
-    //     <Chessboard id="BasicBoard" boardWidth={500}/>
-    //   </div>
-    // </div>
-    <div>
-      <Game />
-    </div>
+  <Provider store={appStore}>
+    <GoogleOAuthProvider clientId="529076617504-08a9igj8ro3tloi25saogb0vj7orcklb.apps.googleusercontent.com">
+      <BrowserRouter>
+        <Routes>
+          <Route path="/play" element={<Game />} />
+          <Route path="/" element={<Home />} />
+        </Routes>
+      </BrowserRouter>
+    </GoogleOAuthProvider>
+  </Provider>
   );
 }
