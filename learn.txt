@@ -1,0 +1,25 @@
+animationDuration 300
+
+areArrowsAllowed false
+
+arePremovesAllowed true?
+
+boardOrientation 'white' 'black'
+
+boardWidth 560
+
+customBoardStyle 	object: {}
+customDarkSquareStyle 	object: { backgroundColor: '#B58863' }
+customDropSquareStyle 	object: { boxShadow: 'inset 0 0 1px 6px rgba(255,255,255,0.75)' }
+customLightSquareStyle 	object: { backgroundColor: '#F0D9B5' }
+
+customPremoveDarkSquareStyle
+customPremoveLightSquareStyle
+
+customSquareStyles 	object: {}
+
+isDraggablePiece 	function: ({ piece, sourceSquare }) => true 	returns [true, false] Function called when a piece drag is attempted. Returns if piece is draggable.
+
+getPositionObject 	function: (currentPosition) => {} 		User function that receives current position object when position changes.
+
+onPieceDrop 	function: (sourceSquare, targetSquare, piece) => true 	returns [true, false] 	User function that is run when piece is dropped on a square. Must return whether the move was successful or not. This return value does not control whether or not the piece was placed (as that is controlled by the position prop) but instead controls premove logic.
