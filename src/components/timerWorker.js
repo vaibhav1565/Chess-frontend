@@ -13,7 +13,7 @@ onmessage = (e) => {
             interval = setInterval(() => {
                 time = Math.max(0, time - tickRate);
                 postMessage({ type: "tick", time });
-                console.log("tick", time);
+                // console.log("tick", time);
                 if (time <= 0) clearInterval(interval);
             }, tickRate);
             break;
