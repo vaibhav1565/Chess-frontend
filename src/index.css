@@ -1,1 +1,22 @@
 @import "tailwindcss";
+
+body {
+  background-color: rgb(54,54,54);
+  color: white;
+  height: 100vh;
+}
+
+@keyframes slideDown {
+  from {
+    transform: translateY(-100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.animate-slide-down {
+  animation: slideDown 0.7s ease-out;
+}

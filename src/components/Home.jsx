@@ -1,10 +1,10 @@
 import { Link } from "react-router-dom";
-import chessboard_image from "../assets/chessboard.png"
+import chessboard_image from "../assets/chessboard.png";
 
 const Home = () => {
 
   return (
-    <div className="flex mt-8">
+    <div className="flex">
       <img src={chessboard_image} alt="chessboard" className="w-[600px]" />
       <div className="ml-4">
         <h1 className="text-5xl">Play Chess Online!</h1>
@@ -21,6 +21,6 @@ const Home = () => {
       </div>
     </div>
   );
-}
+};
 
-export default Home
+export default Home;

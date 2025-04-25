@@ -1,19 +1,20 @@
 import { createBrowserRouter, Outlet, RouterProvider } from "react-router-dom";
-import Play from "./components/Play2";
+import Play from "./components/Play";
 import Sidebar from "./components/Sidebar";
 import { Provider } from "react-redux";
 import store from "./utils/store";
 import Login from "./components/Login";
 import Home from "./components/Home";
 import Register from "./components/Register";
-import { GoogleOAuthProvider } from "@react-oauth/google";
 
 export default function App() {
   const AppLayout = () => {
     return (
       <>
         <Sidebar />
-        <Outlet />
+        <div className="">
+          <Outlet />
+        </div>
       </>
     );
   };
@@ -42,10 +43,8 @@ export default function App() {
     },
   ]);
   return (
-    <GoogleOAuthProvider clientId={import.meta.env.VITE_GOOGLE_CLIENT_ID}>
       <Provider store={store}>
         <RouterProvider router={appRouter} />
       </Provider>
-    </GoogleOAuthProvider>
   );
 }
