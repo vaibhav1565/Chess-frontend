@@ -1,15 +1,17 @@
 import { useEffect, useRef, useState } from "react";
 import { useSelector } from "react-redux";
+import { Chessboard } from "react-chessboard";
 
-import InviteCodeButton from "./InviteCodeButton";
-
-import { getTokenFromCookies, createChessInstance } from "../utils/chessHelper";
+import {
+  getTokenFromCookies,
+  createChessInstance,
+  formatTime,
+} from "../utils/chessHelper";
 
 import {
   GAME_PHASES,
   STATUS_MESSAGES,
   tickRate,
-  TIME_CONTROLS,
   COLORS,
   MESSAGE_TYPES,
   GAME_SETTINGS,
@@ -17,8 +19,15 @@ import {
 } from "../utils/playConstants";
 
 import GameChat from "./GameChat";
-import ChessboardWrapper from "./ChessboardWrapper";
 import GameStatus from "./GameStatus";
+import MoveHistory from "./MoveHistory";
+import ChessButtons from "./ChessButtons";
+import DrawScreen from "./DrawScreen";
+import JoinWithCode from "./JoinWithCode";
+import InviteCode from "./InviteCode";
+import TimeControls from "./TimeControls";
+import GameNavbar from "./GameNavbar";
+import ChessboardOptions from "./ChessboardOptions"
 
 console.clear();
 
@@ -44,17 +53,17 @@ const Play = () => {
 
   const [minutes, setMinutes] = useState(3);
 
-  const [userTime, setUserTime] = useState(null);
-  const [opponentTime, setOpponentTime] = useState(null);
+  const [playerTime, setPlayerTime] = useState(null);
+  const [rivalTime, setRivalTime] = useState(null);
   const userWorker = useRef(null);
   const opponentWorker = useRef(null);
 
-  const [isPopup, setIsPopup] = useState(null);
+  const [popupToggle, setPopupToggle] = useState(null);
 
   const [inviteCode, setInviteCode] = useState(null);
   const [generatingInviteCode, setGeneratingInviteCode] = useState(false);
 
-  const [joinWithCode, setJoinWithCode] = useState("");
+  const [inviteCodeInput, setInviteCodeInput] = useState("");
 
   const [chatMessage, setChatMessage] = useState("");
   const [chatHistory, setChatHistory] = useState([]);
@@ -115,7 +124,7 @@ const Play = () => {
           prev.concat(`${gameState.opponent?.username} accepted a draw`)
         );
         setDrawOffered(null);
-        timersCleanup();
+        cleanupTimers();
         break;
       }
 
@@ -156,11 +165,12 @@ const Play = () => {
   };
 
   function gameBegin(payload) {
+    console.log("[GAME BEGIN]- function called");
     resetState();
 
     const timeLeft = payload.minutes * 60 * 1000;
-    setUserTime(timeLeft);
-    setOpponentTime(timeLeft);
+    setPlayerTime(timeLeft);
+    setRivalTime(timeLeft);
     startTimerFor(
       payload.color === COLORS.WHITE ? "user" : "opponent",
       timeLeft
@@ -196,16 +206,16 @@ const Play = () => {
     const displayMessage =
       `Game over!\nReason-${reason}` + (loser ? `\nLoser-${loser}` : "");
     setStatus(displayMessage);
-    setIsPopup(displayMessage);
+    setPopupToggle(displayMessage);
     setChatHistory((prev) => prev.concat("GAME OVER"));
     setChatHistory((prev) => prev.concat(displayMessage));
-    timersCleanup();
+    cleanupTimers();
 
     setShowAnim(false);
   }
 
   function handleOpponentMove(moveObject) {
-    const newChessObject = chessMove(moveObject);
+    const newChessObject = makeChessMove(moveObject);
     if (newChessObject === false) {
       console.log("Error processing opponent's move");
       return;
@@ -218,7 +228,7 @@ const Play = () => {
     );
     setHistoryIndex((prev) => prev + 1);
 
-    startTimerFor("user", userTime);
+    startTimerFor("user", playerTime);
     checkGameOver();
   }
 
@@ -258,8 +268,8 @@ const Play = () => {
     socket.current.addEventListener("message", messageHandler);
     socket.current.addEventListener("error", errorHandler);
 
-    socket.current.addEventListener("close", (event) => {
-      console.warn("[SOCKET] Connection closed:", event);
+    socket.current.addEventListener("close", () => {
+      console.log("[SOCKET] Connection closed")
       socket.current = null;
     });
 
@@ -269,7 +279,7 @@ const Play = () => {
       socket.current?.removeEventListener("error", errorHandler);
       socket.current?.close();
       socket.current = null;
-      timersCleanup();
+      cleanupTimers();
     };
   }, []);
 
@@ -290,9 +300,9 @@ const Play = () => {
     const messageHandler = (e) => {
       if (e.data.type === "tick") {
         if (isUser) {
-          setUserTime(e.data.time);
+          setPlayerTime(e.data.time);
         } else {
-          setOpponentTime(e.data.time);
+          setRivalTime(e.data.time);
         }
       }
     };
@@ -315,7 +325,7 @@ const Play = () => {
       return;
     }
 
-    timersCleanup();
+    cleanupTimers();
     if (isUser) {
       userWorker.current = setupWorker(true, timeLeft);
     } else {
@@ -329,10 +339,10 @@ const Play = () => {
     setGamePhase(GAME_PHASES.ENDED);
 
     console.log("[TIMER] Cleanup triggered");
-    timersCleanup();
+    cleanupTimers();
   }
 
-  function handleStartGame() {
+  function startGame() {
     console.log("[START]- function called");
     if (gamePhase === GAME_PHASES.ONGOING) {
       console.log("[START]- Cannot start, there is ongoing game");
@@ -358,7 +368,7 @@ const Play = () => {
     }
   }
 
-  function handlePieceDrop(sourceSquare, targetSquare, piece) {
+  function onPieceDrop(sourceSquare, targetSquare, piece) {
     console.log("[MOVE] Piece dropped:", { sourceSquare, targetSquare, piece });
 
     if (historyIndex !== history.length - 1) {
@@ -384,7 +394,7 @@ const Play = () => {
       promotion: piece[1].toLowerCase(), // promotion in case of actual promotion, else, no error
     };
 
-    const newChess = chessMove(moveObject);
+    const newChess = makeChessMove(moveObject);
     if (newChess === false) {
       console.log("[MOVE] not successful");
       return false;
@@ -395,29 +405,46 @@ const Play = () => {
       setChess(newChess);
       setHistoryIndex((prev) => prev + 1);
       // setConnectionError(null);
-      startTimerFor("opponent", opponentTime);
+      startTimerFor("opponent", rivalTime);
       checkGameOver();
     } else {
+      console.log("[MOVE]- Failed to send move to server");
       return false;
     }
 
     return true;
   }
 
-  function handleResign() {
-    if (gamePhase !== GAME_PHASES.ONGOING) return;
-
-    sendMessage(MESSAGE_TYPES.RESIGN, null);
+  function resignGame() {
+    console.log("[RESIGN]- function called");
+    if (gamePhase !== GAME_PHASES.ONGOING) {
+      if (sendMessage(MESSAGE_TYPES.RESIGN, null)) {
+        console.log("[RESIGN]- Message sent");
+      }
+    } else {
+      console.log("[RESIGN]- Failed to send message to server");
+    }
   }
 
-  function handleInviteCode() {
-    if (generatingInviteCode) return;
-    if (
-      gamePhase !== GAME_PHASES.NOT_STARTED &&
-      gamePhase !== GAME_PHASES.ENDED
-    )
-      return;
-    sendMessage(MESSAGE_TYPES.CREATE_INVITE_CODE, { minutes });
+  function createInviteCode() {
+    console.log("[CREATE INVITE CODE]- Function called");
+
+    if (generatingInviteCode) {
+      console.log("[INVITE]- already generating invite code");
+    } else if (
+      gamePhase === GAME_PHASES.ONGOING ||
+      gamePhase === GAME_PHASES.WAITING
+    ) {
+      console.log("[INVITE]- Cannot generate invite code during ongoing game");
+    } else {
+      if (
+        sendMessage(WEBSOCKET_MESSAGE_TYPES.CREATE_INVITE_CODE, { minutes })
+      ) {
+        console.log("[CREATE INVITE CODE]- Message sent");
+      } else {
+        console.log("[CREATE INVITE CODE]- Failed to send message");
+      }
+    }
   }
 
   function handleChatMessage() {
@@ -444,18 +471,18 @@ const Play = () => {
       );
       setChatMessage("");
     } else {
-      console.log("Failed to send chat message");
+      console.log("[CHAT]- Failed to send chat message");
     }
   }
 
   function startTimerFor(role, timeLeft) {
     console.log("[TIMER]- Starting timer for", role);
     if (timeLeft <= 0) {
-      timersCleanup();
+      cleanupTimers();
       setGamePhase(GAME_PHASES.ENDED);
       return;
     }
-    // if (gamePhase !== GAME_PHASES.ONGOING) {
+    // if (phase !== GAME_PHASES.ONGOING) {
     //   return;
     // }
     setTimer(role === "user", timeLeft);
@@ -480,7 +507,7 @@ const Play = () => {
     }
   };
 
-  function drawOffer() {
+  function offerDraw() {
     if (gamePhase !== GAME_PHASES.ONGOING) {
       console.log("[DRAW] Cannot offer draw - game not active");
       return;
@@ -495,7 +522,7 @@ const Play = () => {
         prev.concat(`${user?.data?.username} offered a draw`)
       );
     } else {
-      console.log("Failed to offer draw");
+      console.log("[DRAW]- Failed to offer draw");
       setDrawOffered(null); // Reset on failure
     }
   }
@@ -509,7 +536,7 @@ const Play = () => {
         prev.concat(`${user?.data?.username} accepted a draw`)
       );
     } else {
-      console.log("[DRAW] Failed to accept draw");
+      console.log("[DRAW]- Failed to accept draw");
     }
   }
 
@@ -526,7 +553,7 @@ const Play = () => {
     }
   }
 
-  function chessMove(moveObject) {
+  function makeChessMove(moveObject) {
     console.group("[CHESS MOVE]");
 
     const newChess = createChessInstance();
@@ -544,7 +571,7 @@ const Play = () => {
     }
   }
 
-  function timersCleanup() {
+  function cleanupTimers() {
     console.log("[TIMER CLEANUP]");
 
     if (userWorker.current) {
@@ -562,7 +589,7 @@ const Play = () => {
   function resetState() {
     console.log("[RESET]- resetState function called");
 
-    timersCleanup();
+    cleanupTimers();
 
     setIsCustomToggled(false);
     setIsTimeToggled(false);
@@ -571,7 +598,7 @@ const Play = () => {
     setChatMessage("");
     // setChatHistory([]);
 
-    setJoinWithCode("");
+    setInviteCodeInput("");
 
     setInviteCode(null);
     setGeneratingInviteCode(false);
@@ -582,13 +609,13 @@ const Play = () => {
     userWorker.current = null;
     opponentWorker.current = null;
 
-    setIsPopup(null);
+    setPopupToggle(null);
 
     setShowAnim(false);
   }
 
-  function handleJoinWithCode() {
-    console.log("[JOIN] Attempting to join game with code:", joinWithCode);
+  function joinGameWithCode() {
+    console.log("[JOIN] Attempting to join game with code:", inviteCodeInput);
     console.log("[JOIN] Current game phase:", gamePhase);
 
     if (
@@ -609,7 +636,7 @@ const Play = () => {
     try {
       const payload = {
         type: WEBSOCKET_MESSAGE_TYPES.JOIN_GAME_VIA_INVITE,
-        payload: { inviteCode: joinWithCode },
+        payload: { inviteCode: inviteCodeInput },
       };
       console.log("[JOIN] Sending join request:", payload);
 
@@ -626,126 +653,71 @@ const Play = () => {
 
       <div className="flex relative">
         {/* Left side- Chessboard and player info*/}
-        <ChessboardWrapper
-          onPieceDrop={handlePieceDrop}
-          gameState={gameState}
-          chess={chess}
-          historyIndex={historyIndex}
-          user={user?.data?.username}
-          userTime={userTime}
-          opponentTime={opponentTime}
-          handleStartGame={handleStartGame}
-          showAnim={showAnim}
-          isPopup={isPopup}
-          showPopup={showPopup}
-          setIsPopup={setIsPopup}
-          closePopup={() => setShowPopup(false)}
-        />
+
+        <div className="flex flex-col relative">
+          <div className="flex justify-between">
+            <p className="font-bold">
+              {gameState.opponent ? gameState.opponent.username : "opponent"}
+            </p>
+            <p>{rivalTime ? formatTime(rivalTime) : "0:00"}</p>
+          </div>
+          <Chessboard
+            animationDuration={
+              historyIndex === chess.history().length - 1 ? 300 : 0
+            }
+            areArrowsAllowed={false}
+            boardOrientation={
+              gameState.playerColor === null ||
+              gameState.playerColor === COLORS.WHITE
+                ? "white"
+                : "black"
+            }
+            boardWidth={600}
+            onPieceDrop={onPieceDrop}
+            position={
+              historyIndex > -1
+                ? chess.history({ verbose: true })[historyIndex]["after"]
+                : chess.fen()
+            }
+          />
+          <div className="flex justify-between">
+            <p className="font-bold">
+              {user?.data ? user.data.username : "user"}
+            </p>
+            <p>{playerTime ? formatTime(playerTime) : "0:00"}</p>
+          </div>
+
+          <ChessboardOptions
+            opponent={gameState.opponent?.username}
+            user={user?.data?.username}
+            showAnim={showAnim}
+            popupToggle={popupToggle}
+            setPopupToggle={setPopupToggle}
+            startGame={startGame}
+            showPopup={showPopup}
+            closePopup={() => setShowPopup(false)}
+          />
+        </div>
 
         <div className="w-92 h-[648px] flex flex-col border-2 border-slate-700 ml-4 overflow-y-scroll">
-          {/* Navbar buttons */}
-          <div className="h-[80px] bg-gray-800 text-white flex justify-evenly items-center shadow-md">
-            {gamePhase !== GAME_PHASES.NOT_STARTED &&
-              gamePhase !== GAME_PHASES.WAITING && (
-                <button
-                  onClick={() => setNavbar("play")}
-                  className={`cursor-pointer px-4 py-2 text-sm font-medium uppercase tracking-wide transition-colors ${
-                    navbar === "play"
-                      ? "border-b-2 border-green-400 text-green-400"
-                      : "border-b-2 border-transparent hover:text-green-300 hover:border-green-300"
-                  }`}
-                >
-                  Play
-                </button>
-              )}
-            <button
-              onClick={() => setNavbar("new_game")}
-              className={`cursor-pointer px-4 py-2 text-sm font-medium uppercase tracking-wide transition-colors ${
-                navbar === "new_game"
-                  ? "border-b-2 border-green-400 text-green-400"
-                  : "border-b-2 border-transparent hover:text-green-300 hover:border-green-300"
-              }`}
-            >
-              New Game
-            </button>
-            <button className="px-4 py-2 text-sm font-medium uppercase text-gray-500 cursor-not-allowed">
-              Games
-            </button>
-            <button className="px-4 py-2 text-sm font-medium uppercase text-gray-500 cursor-not-allowed">
-              Players
-            </button>
-          </div>
+          <GameNavbar
+            navbar={navbar}
+            setNavbar={setNavbar}
+            gamePhase={gamePhase}
+          />
 
           <div className="h-[320px]">
             {navbar === "new_game" ? (
-              /* New game options */
               <div className="flex flex-col justify-center items-center text-center mt-4 pb-4">
-                {/* Time control buttons */}
-                <div className="flex flex-col gap-2 w-5/6 mb-4">
-                  <button
-                    onClick={() => setIsTimeToggled(!isTimeToggled)}
-                    className={`cursor-pointer flex items-center justify-center gap-2 p-4 rounded-xl transition-colors bg-gray-200 hover:bg-gray-200`}
-                  >
-                    {minutes} min
-                    {isTimeToggled ? (
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        viewBox="0 0 512 512"
-                        className="w-4 h-4" // Added width and height classes
-                      >
-                        <path d="M233.4 105.4c12.5-12.5 32.8-12.5 45.3 0l192 192c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L256 173.3 86.6 342.6c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3l192-192z" />
-                      </svg>
-                    ) : (
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        viewBox="0 0 512 512"
-                        className="w-4 h-4" // Added width and height classes
-                      >
-                        <path d="M233.4 406.6c12.5 12.5 32.8 12.5 45.3 0l192-192c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0L256 338.7 86.6 169.4c-12.5-12.5-32.8-12.5-45.3 0s-12.5 32.8 0 45.3l192 192z" />
-                      </svg>
-                    )}
-                  </button>
-                  {isTimeToggled && (
-                    <div className="bg-white rounded-xl shadow-lg border border-gray-200 z-50">
-                      {Object.keys(TIME_CONTROLS).map((category) => {
-                        return (
-                          <div className="p-4" key={category}>
-                            <p className="font-semibold text-gray-700 mb-2">
-                              {category[0].toUpperCase() +
-                                category.slice(1).toLowerCase()}
-                            </p>
-                            <div className="grid grid-cols-3 gap-2">
-                              {TIME_CONTROLS[category].map((timeControl) => {
-                                return (
-                                  <button
-                                    key={`${timeControl.minutes} | ${timeControl.increment}`}
-                                    onClick={() => {
-                                      if (timeControl.increment) return;
-                                      setMinutes(timeControl.minutes);
-                                      setIsTimeToggled(false);
-                                    }}
-                                    className={`${
-                                      timeControl.increment
-                                        ? "cursor-not-allowed"
-                                        : "cursor-pointer"
-                                    } px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors text-sm font-medium`}
-                                  >
-                                    {timeControl.increment
-                                      ? `${timeControl.minutes} | ${timeControl.increment}`
-                                      : `${timeControl.minutes} min`}
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
+                <TimeControls
+                  minutes={minutes}
+                  setMinutes={setMinutes}
+                  isTimeToggled={isTimeToggled}
+                  setIsTimeToggled={setIsTimeToggled}
+                />
 
                 <button
-                  onClick={handleStartGame}
+                  onClick={startGame}
                   className="mt-2 w-5/6 bg-green-600 text-white font-extrabold text-xl px-8 py-4 rounded-xl cursor-pointer hover:bg-green-300"
                 >
                   Play
@@ -756,178 +728,49 @@ const Play = () => {
                   className="flex items-center justify-center gap-2 mt-2" // Added flex and alignment classes
                 >
                   <span className="cursor-pointer">Custom</span>
-                  {isCustomToggled ? (
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      viewBox="0 0 512 512"
-                      className="w-4 h-4"
-                    >
-                      <path d="M233.4 105.4c12.5-12.5 32.8-12.5 45.3 0l192 192c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L256 173.3 86.6 342.6c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3l192-192z" />
-                    </svg>
-                  ) : (
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      viewBox="0 0 512 512"
-                      className="w-4 h-4"
-                    >
-                      <path d="M233.4 406.6c12.5 12.5 32.8 12.5 45.3 0l192-192c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0L256 338.7 86.6 169.4c-12.5-12.5-32.8-12.5-45.3 0s-12.5 32.8 0 45.3l192 192z" />
-                    </svg>
-                  )}
                 </button>
 
                 {isCustomToggled && (
-                  <div>
-                    <input
-                      onChange={(e) => setJoinWithCode(e.target.value)}
-                      value={joinWithCode}
-                      placeholder="Enter invite code"
-                      className="mt-2 w-5/6 px-4 py-3 rounded-xl border-2 border-slate-300 focus:outline-none focus:border-green-500 transition-colors"
+                  <>
+                    <JoinWithCode
+                      inviteCodeInput={inviteCodeInput}
+                      setInviteCodeInput={setInviteCodeInput}
+                      joinGameWithCode={joinGameWithCode}
                     />
-                    <button
-                      onClick={handleJoinWithCode}
-                      className="cursor-pointer mt-2 w-5/6 bg-blue-600 text-white font-bold text-lg px-4 py-3 rounded-xl hover:bg-blue-500 transition-colors"
-                    >
-                      Join with code
-                    </button>
 
-                    <InviteCodeButton
+                    <InviteCode
+                      isGenerating={generatingInviteCode}
                       inviteCode={inviteCode}
-                      onRequestCode={handleInviteCode}
-                      generating={generatingInviteCode}
+                      createInviteCode={createInviteCode}
                     />
-                  </div>
+                  </>
                 )}
               </div>
             ) : (
-              /* Play options */
               <>
-                {/* Move history */}
                 <div className="h-[320px] bg-red-200">
                   <div className="h-full">
                     {drawOffered === gameState.opponent._id ? (
-                      <div className="h-full flex flex-col items-center justify-center bg-white rounded-lg shadow-md p-6">
-                        <h3 className="text-xl font-semibold text-gray-800 mb-4">
-                          Accept Draw Offer?
-                        </h3>
-                        <div className="flex gap-4">
-                          <button
-                            onClick={rejectDraw}
-                            className="px-6 py-3 bg-red-100 hover:bg-red-200 text-red-700 rounded-lg transition-colors flex items-center gap-2"
-                          >
-                            <span className="text-xl">❌</span>
-                            Decline
-                          </button>
-                          <button
-                            onClick={acceptDraw}
-                            className="px-6 py-3 bg-green-100 hover:bg-green-200 text-green-700 rounded-lg transition-colors flex items-center gap-2"
-                          >
-                            <span className="text-xl">✅</span>
-                            Accept
-                          </button>
-                        </div>
-                      </div>
+                      <DrawScreen
+                        acceptDraw={acceptDraw}
+                        rejectDraw={rejectDraw}
+                      />
                     ) : (
-                      <ul className="h-full overflow-y-scroll">
-                        {(function () {
-                          let moveHistory = [];
-                          for (let move = 0; move < history.length; move += 2) {
-                            moveHistory.push(history.slice(move, move + 2));
-                          }
-                          return moveHistory;
-                        })().map((item, index) => {
-                          return (
-                            <li
-                              key={index}
-                              className="grid grid-cols-3 px-2 bg-gradient-to-r from-blue-50 to-blue-100 border border-blue-300 rounded-xl shadow-md hover:from-blue-100 hover:to-blue-200 hover:shadow-lg transition-all duration-300"
-                            >
-                              <span className="p-2">{index + 1} .</span>
-                              <span
-                                className={`p-2 cursor-pointer text-center ${
-                                  index * 2 === historyIndex
-                                    ? "bg-gray-400"
-                                    : ""
-                                }`}
-                                onClick={() => setHistoryIndex(index * 2)}
-                              >
-                                {" "}
-                                {item[0]}
-                              </span>
-                              {item[1] && (
-                                <span
-                                  className={`p-2 cursor-pointer text-center ${
-                                    index * 2 + 1 === historyIndex
-                                      ? "bg-gray-400"
-                                      : ""
-                                  }`}
-                                  onClick={() => setHistoryIndex(index * 2 + 1)}
-                                >
-                                  {" "}
-                                  {item[1]}
-                                </span>
-                              )}
-                            </li>
-                          );
-                        })}
-                      </ul>
+                      <MoveHistory
+                        history={history}
+                        historyIndex={historyIndex}
+                        setHistoryIndex={setHistoryIndex}
+                      />
                     )}
                   </div>
                 </div>
 
                 <div className="bg-green-400 flex flex-col h-[240px]">
-                  {/* Chess move buttons */}
-                  <div className="flex justify-between border-t border-gray-200">
-                    {/* Game control buttons */}
-                    <div className="flex gap-2">
-                      <button
-                        onClick={drawOffer}
-                        className="px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors font-medium"
-                      >
-                        Draw
-                      </button>
-                      <button
-                        onClick={handleResign}
-                        className="px-4 py-2 text-red-700 bg-red-100 hover:bg-red-200 rounded-lg transition-colors font-medium"
-                      >
-                        Resign
-                      </button>
-                    </div>
-
-                    {/* Move navigation buttons */}
-                    <div className="flex gap-1">
-                      <button
-                        onClick={() => setHistoryIndex(0)}
-                        className="px-3 py-2 text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
-                      >
-                        ⏮
-                      </button>
-                      <button
-                        onClick={() =>
-                          setHistoryIndex((prev) =>
-                            prev > 0 ? prev - 1 : prev
-                          )
-                        }
-                        className="px-3 py-2 text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
-                      >
-                        ◀
-                      </button>
-                      <button
-                        onClick={() =>
-                          setHistoryIndex((prev) =>
-                            prev < history.length - 1 ? prev + 1 : prev
-                          )
-                        }
-                        className="px-3 py-2 text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
-                      >
-                        ▶
-                      </button>
-                      <button
-                        onClick={() => setHistoryIndex(history.length - 1)}
-                        className="px-3 py-2 text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
-                      >
-                        ⏭
-                      </button>
-                    </div>
-                  </div>
+                  <ChessButtons
+                    setHistoryIndex={setHistoryIndex}
+                    offerDraw={offerDraw}
+                    resignGame={resignGame}
+                  />
 
                   <GameChat
                     chatHistory={chatHistory}
@@ -940,7 +783,6 @@ const Play = () => {
             )}
           </div>
         </div>
-        
       </div>
     </div>
   );

@@ -6,7 +6,8 @@ const GameChat = ({chatHistory, chatMessage, onMessageChange, onSendMessage}) =>
       <ul className="overflow-y-scroll max-h-[150px]">
         {chatHistory.map((message, index) => {
           return (
-            <li key={index}>
+            <li className="text-black"
+            key={index}>
               {typeof message === "object"
                 ? `${message.from} - ${message.text}`
                 : message}
