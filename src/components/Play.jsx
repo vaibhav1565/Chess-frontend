@@ -6,6 +6,8 @@ import {
   getTokenFromCookies,
   createChessInstance,
   formatTime,
+  playSound,
+  playMoveSound,
 } from "../utils/chessHelper";
 
 import {
@@ -27,9 +29,18 @@ import JoinWithCode from "./JoinWithCode";
 import InviteCode from "./InviteCode";
 import TimeControls from "./TimeControls";
 import GameNavbar from "./GameNavbar";
-import ChessboardOptions from "./ChessboardOptions"
+import ChessboardOptions from "./ChessboardOptions";
+import { Chess } from "chess.js";
+import ChessHistoryButtons from "./ChessHistoryButtons";
 
 console.clear();
+
+const sound_game_start = new Audio("sounds/game-start.mp3");
+const sound_game_end = new Audio("sounds/game-end.mp3");
+
+const sound_move_self = new Audio("sounds/move-self.mp3");
+const sound_move_opponent = new Audio("sounds/move-opponent.mp3");
+const sound_illegal = new Audio("sounds/illegal.mp3");
 
 const Play = () => {
   const [gamePhase, setGamePhase] = useState(GAME_PHASES.NOT_STARTED);
@@ -44,8 +55,6 @@ const Play = () => {
   });
 
   const [status, setStatus] = useState("");
-
-  // const [connectionError, setConnectionError] = useState(null);
 
   const [chess, setChess] = useState(createChessInstance);
   const history = chess.history();
@@ -63,9 +72,9 @@ const Play = () => {
   const [inviteCode, setInviteCode] = useState(null);
   const [generatingInviteCode, setGeneratingInviteCode] = useState(false);
 
-  const [inviteCodeInput, setInviteCodeInput] = useState("");
+  const [joinCodeInput, setJoinCodeInput] = useState("");
 
-  const [chatMessage, setChatMessage] = useState("");
+  const [chatInput, setChatInput] = useState("");
   const [chatHistory, setChatHistory] = useState([]);
 
   const [drawOffered, setDrawOffered] = useState(null);
@@ -85,7 +94,7 @@ const Play = () => {
     console.log("[handle]- function called", message);
     switch (message.type) {
       case MESSAGE_TYPES.GAME_BEGIN: {
-        gameBegin(message.payload);
+        beginGame(message.payload);
         break;
       }
 
@@ -164,7 +173,7 @@ const Play = () => {
     }
   };
 
-  function gameBegin(payload) {
+  function beginGame(payload) {
     console.log("[GAME BEGIN]- function called");
     resetState();
 
@@ -175,8 +184,6 @@ const Play = () => {
       payload.color === COLORS.WHITE ? "user" : "opponent",
       timeLeft
     );
-
-    console.log("[GAME] Game started:", payload);
 
     setGamePhase(GAME_PHASES.ONGOING);
     setGameState({
@@ -197,6 +204,8 @@ const Play = () => {
     );
     setNavbar("play");
     setShowAnim(true);
+
+    playSound(sound_game_start);
   }
 
   function endGame(reason, loser) {
@@ -204,32 +213,34 @@ const Play = () => {
     setGamePhase(GAME_PHASES.ENDED);
     console.log("[GAME] Game over:", reason, loser);
     const displayMessage =
-      `Game over!\nReason-${reason}` + (loser ? `\nLoser-${loser}` : "");
+      `GAME OVER!\nReason-${reason}` + (loser ? ` Loser-${loser}` : "");
     setStatus(displayMessage);
     setPopupToggle(displayMessage);
-    setChatHistory((prev) => prev.concat("GAME OVER"));
     setChatHistory((prev) => prev.concat(displayMessage));
     cleanupTimers();
 
     setShowAnim(false);
+
+    playSound(sound_game_end);
   }
 
   function handleOpponentMove(moveObject) {
-    const newChessObject = makeChessMove(moveObject);
-    if (newChessObject === false) {
+    const {latestMove, newChess} = makeChessMove(moveObject);
+    if (newChess === false) {
       console.log("Error processing opponent's move");
       return;
     }
 
-    setChess(newChessObject);
-    console.log(
-      "[MOVE] Opponent made move:",
-      newChessObject.history().slice(-1)[0]
-    );
+    setChess(newChess);
+    console.log("[MOVE] Opponent made move:", newChess.history().slice(-1)[0]);
     setHistoryIndex((prev) => prev + 1);
 
     startTimerFor("user", playerTime);
     checkGameOver();
+
+    if (!playMoveSound(latestMove)) {
+      playSound(sound_move_opponent);
+    }
   }
 
   useEffect(() => {
@@ -269,7 +280,7 @@ const Play = () => {
     socket.current.addEventListener("error", errorHandler);
 
     socket.current.addEventListener("close", () => {
-      console.log("[SOCKET] Connection closed")
+      console.log("[SOCKET] Connection closed");
       socket.current = null;
     });
 
@@ -342,7 +353,7 @@ const Play = () => {
     cleanupTimers();
   }
 
-  function startGame() {
+  function handleStartGame() {
     console.log("[START]- function called");
     if (gamePhase === GAME_PHASES.ONGOING) {
       console.log("[START]- Cannot start, there is ongoing game");
@@ -368,7 +379,7 @@ const Play = () => {
     }
   }
 
-  function onPieceDrop(sourceSquare, targetSquare, piece) {
+  function handlePieceDrop(sourceSquare, targetSquare, piece) {
     console.log("[MOVE] Piece dropped:", { sourceSquare, targetSquare, piece });
 
     if (historyIndex !== history.length - 1) {
@@ -394,7 +405,7 @@ const Play = () => {
       promotion: piece[1].toLowerCase(), // promotion in case of actual promotion, else, no error
     };
 
-    const newChess = makeChessMove(moveObject);
+    const {latestMove, newChess} = makeChessMove(moveObject);
     if (newChess === false) {
       console.log("[MOVE] not successful");
       return false;
@@ -412,15 +423,21 @@ const Play = () => {
       return false;
     }
 
+    if (!playMoveSound(latestMove)) {
+      playSound(sound_move_self);
+    }
     return true;
   }
 
   function resignGame() {
     console.log("[RESIGN]- function called");
     if (gamePhase !== GAME_PHASES.ONGOING) {
-      if (sendMessage(MESSAGE_TYPES.RESIGN, null)) {
-        console.log("[RESIGN]- Message sent");
-      }
+      console.log("[RESIGN]- No ongoing game");
+      return;
+    }
+
+    if (sendMessage(MESSAGE_TYPES.RESIGN)) {
+      console.log("[RESIGN]- Message sent");
     } else {
       console.log("[RESIGN]- Failed to send message to server");
     }
@@ -447,13 +464,13 @@ const Play = () => {
     }
   }
 
-  function handleChatMessage() {
+  function sendChatMessage() {
     if (gamePhase !== GAME_PHASES.ONGOING) {
       console.log("[CHAT]- Message not sent. There is no ongoing game");
       return;
     }
 
-    const messageToSend = chatMessage.trim();
+    const messageToSend = chatInput.trim();
 
     if (
       messageToSend.length == 0 ||
@@ -469,7 +486,7 @@ const Play = () => {
       setChatHistory((prev) =>
         prev.concat({ from: user.data.username, text: messageToSend })
       );
-      setChatMessage("");
+      setChatInput("");
     } else {
       console.log("[CHAT]- Failed to send chat message");
     }
@@ -556,17 +573,18 @@ const Play = () => {
   function makeChessMove(moveObject) {
     console.group("[CHESS MOVE]");
 
-    const newChess = createChessInstance();
+    const newChess = new Chess();
     newChess.loadPgn(chess.pgn());
 
     try {
-      const move = newChess.move(moveObject);
-      console.log("Move successful:", move.san);
+      const latestMove = newChess.move(moveObject);
+      console.log("Move successful:", moveObject.san);
       console.groupEnd();
-      return newChess;
+      return { latestMove, newChess };
     } catch (error) {
       console.error("Invalid move:", error);
       console.groupEnd();
+      playSound(sound_illegal);
       return false;
     }
   }
@@ -595,10 +613,10 @@ const Play = () => {
     setIsTimeToggled(false);
     setDrawOffered(null);
 
-    setChatMessage("");
+    setChatInput("");
     // setChatHistory([]);
 
-    setInviteCodeInput("");
+    setJoinCodeInput("");
 
     setInviteCode(null);
     setGeneratingInviteCode(false);
@@ -615,7 +633,7 @@ const Play = () => {
   }
 
   function joinGameWithCode() {
-    console.log("[JOIN] Attempting to join game with code:", inviteCodeInput);
+    console.log("[JOIN] Attempting to join game with code:", joinCodeInput);
     console.log("[JOIN] Current game phase:", gamePhase);
 
     if (
@@ -636,7 +654,7 @@ const Play = () => {
     try {
       const payload = {
         type: WEBSOCKET_MESSAGE_TYPES.JOIN_GAME_VIA_INVITE,
-        payload: { inviteCode: inviteCodeInput },
+        payload: { inviteCode: joinCodeInput },
       };
       console.log("[JOIN] Sending join request:", payload);
 
@@ -652,8 +670,6 @@ const Play = () => {
       <GameStatus turn={chess.turn()} gameState={gameState} status={status} />
 
       <div className="flex relative">
-        {/* Left side- Chessboard and player info*/}
-
         <div className="flex flex-col relative">
           <div className="flex justify-between">
             <p className="font-bold">
@@ -673,7 +689,7 @@ const Play = () => {
                 : "black"
             }
             boardWidth={600}
-            onPieceDrop={onPieceDrop}
+            onPieceDrop={handlePieceDrop}
             position={
               historyIndex > -1
                 ? chess.history({ verbose: true })[historyIndex]["after"]
@@ -693,13 +709,14 @@ const Play = () => {
             showAnim={showAnim}
             popupToggle={popupToggle}
             setPopupToggle={setPopupToggle}
-            startGame={startGame}
+            startGame={handleStartGame}
             showPopup={showPopup}
             closePopup={() => setShowPopup(false)}
           />
         </div>
 
-        <div className="w-92 h-[648px] flex flex-col border-2 border-slate-700 ml-4 overflow-y-scroll">
+        {/* Right side */}
+        <div className="w-92 h-[648px] flex flex-col border-2 border-white-700 ml-4 overflow-y-auto">
           <GameNavbar
             navbar={navbar}
             setNavbar={setNavbar}
@@ -717,15 +734,15 @@ const Play = () => {
                 />
 
                 <button
-                  onClick={startGame}
-                  className="mt-2 w-5/6 bg-green-600 text-white font-extrabold text-xl px-8 py-4 rounded-xl cursor-pointer hover:bg-green-300"
+                  onClick={handleStartGame}
+                  className="mt-2 w-5/6 bg-green-600 text-white font-extrabold text-xl px-8 py-4 rounded-xl cursor-pointer hover:bg-green-400"
                 >
                   Play
                 </button>
 
                 <button
                   onClick={() => setIsCustomToggled(!isCustomToggled)}
-                  className="flex items-center justify-center gap-2 mt-2" // Added flex and alignment classes
+                  className="flex items-center justify-center mt-2"
                 >
                   <span className="cursor-pointer">Custom</span>
                 </button>
@@ -733,8 +750,8 @@ const Play = () => {
                 {isCustomToggled && (
                   <>
                     <JoinWithCode
-                      inviteCodeInput={inviteCodeInput}
-                      setInviteCodeInput={setInviteCodeInput}
+                      joinCodeInput={joinCodeInput}
+                      setJoinCodeInput={setJoinCodeInput}
                       joinGameWithCode={joinGameWithCode}
                     />
 
@@ -748,35 +765,38 @@ const Play = () => {
               </div>
             ) : (
               <>
-                <div className="h-[320px] bg-red-200">
-                  <div className="h-full">
-                    {drawOffered === gameState.opponent._id ? (
-                      <DrawScreen
-                        acceptDraw={acceptDraw}
-                        rejectDraw={rejectDraw}
-                      />
-                    ) : (
-                      <MoveHistory
-                        history={history}
-                        historyIndex={historyIndex}
-                        setHistoryIndex={setHistoryIndex}
-                      />
-                    )}
-                  </div>
+                <div className="h-full">
+                  {drawOffered === gameState.opponent._id ? (
+                    <DrawScreen
+                      acceptDraw={acceptDraw}
+                      rejectDraw={rejectDraw}
+                    />
+                  ) : (
+                    <MoveHistory
+                      history={history}
+                      historyIndex={historyIndex}
+                      setHistoryIndex={setHistoryIndex}
+                    />
+                  )}
                 </div>
 
-                <div className="bg-green-400 flex flex-col h-[240px]">
-                  <ChessButtons
-                    setHistoryIndex={setHistoryIndex}
-                    offerDraw={offerDraw}
-                    resignGame={resignGame}
-                  />
+                <div className="flex flex-col h-[248px] text-black bg-blue-400">
+                  <div className="flex justify-between border-t border-gray-200">
+                    <ChessButtons
+                      offerDraw={offerDraw}
+                      resignGame={resignGame}
+                    />
+                    <ChessHistoryButtons
+                      setHistoryIndex={setHistoryIndex}
+                      historyLength={history.length}
+                    />
+                  </div>
 
                   <GameChat
                     chatHistory={chatHistory}
-                    chatMessage={chatMessage}
-                    onMessageChange={(e) => setChatMessage(e.target.value)}
-                    onSendMessage={handleChatMessage}
+                    chatInput={chatInput}
+                    onInputChange={(e) => setChatInput(e.target.value)}
+                    sendChatMessage={sendChatMessage}
                   />
                 </div>
               </>

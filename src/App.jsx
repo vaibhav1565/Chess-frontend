@@ -1,20 +1,23 @@
 import { createBrowserRouter, Outlet, RouterProvider } from "react-router-dom";
 import Play from "./components/Play";
-import Sidebar from "./components/Sidebar";
+// import Sidebar from "./components/Sidebar";
 import { Provider } from "react-redux";
 import store from "./utils/store";
 import Login from "./components/Login";
 import Home from "./components/Home";
 import Register from "./components/Register";
+import Stockfish from "./components/Stockfish";
+import Header from "./components/Header";
 
 export default function App() {
   const AppLayout = () => {
     return (
       <>
-        <Sidebar />
-        <div className="">
+        {/* <Sidebar /> */}
+        <Header />
+        {/* <div> */}
           <Outlet />
-        </div>
+        {/* </div> */}
       </>
     );
   };
@@ -25,7 +28,7 @@ export default function App() {
       children: [
         {
           path: "/",
-          element: <Home />
+          element: <Home />,
         },
         {
           path: "/play",
@@ -37,8 +40,12 @@ export default function App() {
         },
         {
           path: "/register",
-          element: <Register />
-        }
+          element: <Register />,
+        },
+        {
+          path: "/stockfish",
+          element: <Stockfish />,
+        },
       ],
     },
   ]);

@@ -4,10 +4,10 @@ import chessboard_image from "../assets/chessboard.png";
 const Home = () => {
 
   return (
-    <div className="flex">
-      <img src={chessboard_image} alt="chessboard" className="w-[600px]" />
-      <div className="ml-4">
-        <h1 className="text-5xl">Play Chess Online!</h1>
+    <div>
+      <img src={chessboard_image} alt="chessboard" className="hidden md:inline w-96" />
+      <div className="ml-4 inline-block">
+        <h1 className="text-5xl text-center">Play Chess Online!</h1>
         <div className="mt-4">
           <Link to="/play">
             <button className="block cursor-pointer bg-green-600 text-white py-4 px-20 rounded">

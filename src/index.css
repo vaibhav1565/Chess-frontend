@@ -6,12 +6,8 @@ body {
   height: 100vh;
 }
 
-::-webkit-scrollbar-thumb {
-  background-color: red; /* Scroll thumb color */
-}
-/* For Firefox */
 * {
-  scrollbar-color: red gray; /* Thumb and track color */
+  box-sizing: border-box;
 }
 
 @keyframes slideDown {

@@ -10,7 +10,7 @@ const TimeControls = ({
     <div className="flex flex-col gap-2 w-5/6 mb-4">
       <button
         onClick={() => setIsTimeToggled(!isTimeToggled)}
-        className={`cursor-pointer flex items-center justify-center gap-2 p-4 rounded-xl transition-colors bg-gray-200 text-black hover:bg-gray-200`}
+        className={`cursor-pointer flex items-center justify-center gap-2 p-4 rounded-xl transition-colors bg-gray-200 text-black hover:bg-gray-100`}
       >
         {minutes} min
       </button>

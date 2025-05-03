@@ -77,7 +77,7 @@ const Sidebar = () => {
   }
 
   return (
-    <div className="h-screen float-left w-36 mr-8 px-2 flex flex-col bg-[rgb(38,37,34)] text-white">
+    <div className="hidden md:block h-screen float-left w-36 mr-8 px-2 flex flex-col bg-[rgb(38,37,34)] text-white">
       <Link to="/">
         {" "}
         <img src={logo} alt="logo" className="w-32" aria-label="Logo" />
