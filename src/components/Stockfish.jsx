@@ -1,11 +1,16 @@
-import { Chess } from "chess.js";
+import { Chess, DEFAULT_POSITION } from "chess.js";
 import { useRef, useState } from "react";
 import { Chessboard } from "react-chessboard";
 import { useSelector } from "react-redux";
-import { GAME_PHASES } from "../utils/playConstants";
+import { COLORS, GAME_END_REASONS, GAME_PHASES } from "../utils/playConstants";
 import MoveHistory from "./MoveHistory";
 import ChessHistoryButtons from "./ChessHistoryButtons";
+import StatusBar from "./StatusBar";
 import { playMoveSound, playSound } from "../utils/chessHelper";
+import {
+  BOT_IMAGE,
+} from "../utils/otherConstants";
+import PlayerTile from "./PlayerTile";
 
 const sound_game_start = new Audio("sounds/game-start.mp3");
 const sound_game_end = new Audio("sounds/game-end.mp3");
@@ -31,9 +36,35 @@ const Stockfish = () => {
 
   const [gamePhase, setGamePhase] = useState(GAME_PHASES.NOT_STARTED);
 
-  const [gameOverText, setGameOverText] = useState(null);
+  const [status, setStatus] = useState("Click on play button to get started");
 
   const stockfish = useRef(null);
+
+  function beginGame() {
+    console.group("[START GAME]");
+
+    resetState();
+
+    setGamePhase(GAME_PHASES.ONGOING);
+    const colorToSet =
+      colorChoice === "black"
+        ? "b"
+        : colorChoice === "white"
+        ? "w"
+        : Math.random() < 0.5
+        ? "b"
+        : "w";
+
+    setUserColor(colorToSet);
+
+    if (colorToSet === "b") {
+      startEngine();
+      callEngine(chess.fen());
+    }
+
+    playSound(sound_game_start);
+    console.groupEnd();
+  }
 
   function callEngine(fen) {
     console.group("[ENGINE CALL]");
@@ -41,6 +72,18 @@ const Stockfish = () => {
     stockfish.current.postMessage(`position fen ${fen}`);
     stockfish.current.postMessage(`go depth ${DEPTH}`);
     console.groupEnd();
+  }
+
+  function endGame(reason, loser) {
+    console.group("[ENDGAME]");
+
+    setStatus(`Game over by ${reason}\n${loser ? `Loser: ${loser}` : ""}`);
+    setGamePhase(GAME_PHASES.ENDED);
+    console.log(`Game ended: ${reason}, ${loser}`);
+
+    console.groupEnd();
+
+    playSound(sound_game_end);
   }
 
   function getGameOverDetails(chessInstance) {
@@ -67,14 +110,9 @@ const Stockfish = () => {
     const gameOverDetails = getGameOverDetails(chessInstance);
 
     const { reason, loser } = gameOverDetails;
-    setGameOverText(
-      `Game over by ${reason}\n${loser ? `Loser: ${loser}` : ""}`
-    );
-    setGamePhase(GAME_PHASES.ENDED);
-    console.log(`Game ended: ${reason}`);
-    console.groupEnd();
+    endGame(reason, loser);
 
-    playSound(sound_game_end);
+    console.groupEnd();
   }
 
   function handlePieceDrop(sourceSquare, targetSquare, piece) {
@@ -89,23 +127,24 @@ const Stockfish = () => {
       setHistoryIndex(history.length - 1);
       return false;
     }
-    // if (chess.turn() != userColor) {
-    //   console.log("Not your turn", chess.turn(), userColor);
-    //   console.groupEnd();
-    //   return;
-    // }
-    
+    if (chess.turn() != userColor) {
+      console.log("Not your turn", chess.turn(), userColor);
+      console.groupEnd();
+      return;
+    }
+
     const moveObject = {
       from: sourceSquare,
       to: targetSquare,
       promotion: piece[1].toLowerCase(), // promotion in case of actual promotion, else, no error,
     };
 
-    const {latestMove, newChess} = makeChessMove(moveObject);
-    if (newChess === false) {
+    const { success, latestMove, newChess } = makeChessMove(moveObject);
+    if (!success) {
       console.groupEnd();
       return false;
     }
+
     setChess(newChess);
     setHistoryIndex((prev) => prev + 1);
 
@@ -139,47 +178,56 @@ const Stockfish = () => {
       console.log("Move successful:", latestMove.san);
       console.groupEnd();
 
-      return {latestMove, newChess};
+      return { success: true, latestMove, newChess };
     } catch (error) {
       console.error("Invalid move:", error);
       console.error("FEN", newChess.fen());
       console.groupEnd();
       playSound(sound_illegal);
-      return false;
+      return { success: false };
     }
   }
 
   function makeEngineMove(move) {
     console.group("[ENGINE MOVE]");
 
-    const moveObject = {
-      from: move.slice(0, 2),
-      to: move.slice(2),
-    };
-    console.log("Move object", moveObject);
+    console.log("Move object", move);
 
     setChess((prevChess) => {
-      const newChess = new Chess();
-      newChess.loadPgn(prevChess.pgn());
-
-      const latestMove = newChess.move(moveObject);
-      setHistoryIndex((prev) => prev + 1);
-      console.log("Move successful:", latestMove.san);
-      if (! playMoveSound(latestMove)) {
-        playSound(sound_move_opponent);
+      try {
+        const newChess = new Chess();
+        newChess.loadPgn(prevChess.pgn());
+        const latestMove = newChess.move(move);
+        setHistoryIndex((prev) => prev + 1);
+        console.log("Move successful:", latestMove.san);
+        if (!playMoveSound(latestMove)) {
+          playSound(sound_move_opponent);
+        }
+        if (newChess.isGameOver()) {
+          handleGameOver(newChess);
+        }
+        return newChess;
+      } catch {
+        return prevChess;
+      } finally {
+        console.groupEnd();
       }
-      if (newChess.isGameOver()) {
-        handleGameOver(newChess);
-      }
-      console.groupEnd();
-      return newChess;
     });
+  }
+
+  function newGame() {
+    resetState();
+    setGamePhase(GAME_PHASES.NOT_STARTED);
   }
 
   function resetState() {
     setChess(new Chess());
     setHistoryIndex(-1);
-    setGameOverText(null);
+    setStatus("Click on play button to get started");
+  }
+
+  function resignGame() {
+    endGame(GAME_END_REASONS.RESIGN, userColor);
   }
 
   function startEngine() {
@@ -200,161 +248,162 @@ const Stockfish = () => {
     console.groupEnd();
   }
 
-  function beginGame() {
-    console.group("[START GAME]");
-    resetState();
-
-    setGamePhase(GAME_PHASES.ONGOING);
-    const colorToSet =
-      colorChoice === "black"
-        ? "b"
-        : colorChoice === "white"
-        ? "w"
-        : Math.random() < 0.5
-        ? "b"
-        : "w";
-
-    setUserColor(colorToSet);
-
-    if (colorToSet === "b") {
-      startEngine();
-      callEngine(chess.fen());
+  function undoMove() {
+    console.group("[UNDOMOVE]");
+    if (!history.length) {
+      console.log("No moves played yet!");
+      return;
     }
+    setChess((prev) => {
+      let movesLength = prev.history().length;
+      if (movesLength === 0) {
+        return prev;
+      }
 
-    playSound(sound_game_start);
+      if (userColor === COLORS.BLACK) {
+        if (movesLength === 1) {
+          return prev;
+        }
+        if (movesLength % 2 === 1) {
+          prev.undo();
+          setHistoryIndex((prev) => prev - 1);
+        }
+      } else {
+        if (movesLength % 2 === 0) {
+          prev.undo();
+          setHistoryIndex((prev) => prev - 1);
+        }
+      }
+      prev.undo();
+      setHistoryIndex((prev) => prev - 1);
+
+      return prev;
+    });
     console.groupEnd();
   }
 
   return (
-    <div className="flex">
-      {/* Chessboard and players info */}
-      <div>
-        <div>
-          <p>Bot</p>
+    <div className="flex flex-col items-center justify-center w-full px-4 sm:px-6 lg:px-8 text-center">
+      <StatusBar status={status} />
+      <div className="flex flex-col lg:flex-row items-center justify-center gap-6 py-4 w-full max-w-7xl mx-auto">
+        {/* Chessboard and players info */}
+        <div className="w-full max-w-[600px] lg:w-2/3 flex flex-col items-center">
+          <PlayerTile playerName="Stockfish" isBot={true} />
+
+          <div className="w-full">
+              <Chessboard
+                animationDuration={
+                  historyIndex === chess.history().length - 1 ? 300 : 0
+                }
+                areArrowsAllowed={false}
+                boardOrientation={
+                  gamePhase ===
+                  (GAME_PHASES.ONGOING || gamePhase === GAME_PHASES.ENDED)
+                    ? userColor === "b"
+                      ? "black"
+                      : "white"
+                    : colorChoice === "black"
+                    ? "black"
+                    : "white"
+                }
+                onPieceDrop={handlePieceDrop}
+                position={
+                  historyIndex === -1
+                    ? DEFAULT_POSITION
+                    : chess.history({ verbose: true })[historyIndex]["after"]
+                }
+              />
+          </div>
+
+          <PlayerTile playerName={user ? user.data.username : "Guest"} />
         </div>
-        <div className="relative">
-          <Chessboard
-            areArrowsAllowed={false}
-            boardOrientation={
-              gamePhase === GAME_PHASES.ONGOING
-                ? userColor === "b"
-                  ? "black"
-                  : "white"
-                : colorChoice === "black"
-                ? "black"
-                : "white"
-            }
-            boardWidth={600}
-            onPieceDrop={handlePieceDrop}
-            position={
-              historyIndex === -1
-                ? chess.fen()
-                : chess.history({ verbose: true })[historyIndex]["after"]
-            }
-          />
-          {gameOverText && (
-            <div className="absolute top-1/2 left-1/2 -translate-1/2 h-72 w-80 rounded-lg bg-[rgb(42,42,38)] text-white">
-              {/* Cross button */}
-              <button
-                className="absolute top-0 right-0 text-white text-4xl font-bold cursor-pointer hover:text-gray-400"
-                onClick={() => setGameOverText(null)}
-              >
-                &times;
-              </button>
-              <p className="text-center mb-2 whitespace-pre-line">
-                {gameOverText}
-              </p>
-              <div className="flex justify-center items-center mb-2">
-                <div>
-                  <img
-                    src="https://images.chesscomfiles.com/uploads/v1/bot_personality/9ed5fe4e-8a5e-11ea-a40e-67edad6464bf.40fc8cbc.384x384o.cb8d4e3ae1b5@2x.png"
-                    className="w-14"
-                  />
-                  {/* <span>Maximum</span> */}
-                </div>
-                <p className="mx-4">vs</p>
-                <div>
-                  <img
-                    src="https://www.chess.com/bundles/web/images/user-image.svg"
-                    className="w-14"
-                  />
-                  {/* <span>Guest</span> */}
-                </div>
+
+        {/* Move history, Chess buttons */}
+        <div className="w-full max-w-[600px] lg:w-1/3 lg:h-[680px] p-6 rounded-xl mt-8 lg:mt-0 bg-gradient-to-br from-gray-800 via-gray-700 to-gray-900 shadow-lg border border-gray-600 transition-all duration-300">
+          <div className="flex items-center justify-center gap-4 bg-gradient-to-bl from-indigo-700 via-indigo-500 to-indigo-300 px-4 py-3 rounded-2xl mb-6 shadow-md border border-indigo-500 transition-all duration-300">
+            <img
+              className="w-7 h-7 filter drop-shadow-md"
+              src={BOT_IMAGE}
+              alt="Bot icon"
+            />
+            <h2 className="text-2xl font-bold text-white tracking-wide">
+              <span className="bg-clip-text text-white">Play Stockfish</span>
+            </h2>
+          </div>
+
+          {gamePhase === GAME_PHASES.NOT_STARTED ? (
+            <>
+              <p className="text-lg md:text-xl mb-4">Pick a color</p>
+              <div className="flex justify-around mb-6">
+                {["white", "random", "black"].map((color) => (
+                  <button
+                    className={`rounded-xl p-1 cursor-pointer transition-all duration-200 ${
+                      colorChoice === color
+                        ? "border-4 border-green-600"
+                        : "border-4 border-transparent"
+                    }`}
+                    key={color}
+                    onClick={() => setColorChoice(color)}
+                    aria-label={`Pick ${color} color`}
+                  >
+                    <img
+                      src={`https://www.chess.com/bundles/web/images/play-side/${color}.svg`}
+                      alt={`${color} piece`}
+                      className="w-10 md:w-14"
+                    />
+                  </button>
+                ))}
               </div>
               <div className="flex justify-center">
                 <button
                   onClick={beginGame}
-                  className="mt-2 w-full mx-4 bg-green-600 text-white font-extrabold text-xl px-8 py-4 rounded-xl cursor-pointer hover:bg-green-400"
+                  className="w-5/6 bg-green-600 text-white font-bold text-base md:text-xl px-6 py-3 rounded-xl cursor-pointer hover:bg-green-500 transition duration-200"
                 >
-                  Rematch
+                  Play
                 </button>
               </div>
-              <div className="flex justify-around mt-2 gap-4">
-                <button className="cursor-not-allowed bg-blue-600 flex-1 text-white font-bold px-6 py-2 rounded-lg hover:bg-blue-400 transition duration-200">
-                  New Bot
-                </button>
-                <button className="cursor-not-allowed bg-blue-600 flex-1 text-white font-bold px-6 py-2 rounded-lg hover:bg-blue-400 transition duration-200">
-                  Game Review
-                </button>
+            </>
+          ) : (
+            <>
+              {/* Chess buttons */}
+              <div className="mb-4">
+                <div className="flex justify-evenly">
+                  <button
+                    onClick={undoMove}
+                    className="bg-blue-600 text-white font-bold text-base md:text-lg px-4 py-2 rounded-lg cursor-pointer hover:bg-blue-500 transition duration-200"
+                  >
+                    Undo move
+                  </button>
+                  {/* Rematch button */}
+                  <button
+                    onClick={newGame}
+                    className="bg-blue-600 text-white font-bold text-base md:text-lg px-4 py-2 rounded-lg cursor-pointer hover:bg-blue-500 transition duration-200"
+                  >
+                    New game
+                  </button>
+                  <button
+                    onClick={resignGame}
+                    className="bg-blue-600 text-white font-bold text-base md:text-lg px-4 py-2 rounded-lg cursor-pointer hover:bg-blue-500 transition duration-200"
+                  >
+                    Resign
+                  </button>
+                </div>
+
+                <ChessHistoryButtons
+                  setHistoryIndex={setHistoryIndex}
+                  historyLength={history.length}
+                />
               </div>
-            </div>
+
+              {/* Move history */}
+              <MoveHistory
+                history={chess.history()}
+                historyIndex={historyIndex}
+                setHistoryIndex={setHistoryIndex}
+              />
+            </>
           )}
         </div>
-        <div>
-          <p>{user ? user.data.username : "Guest"}</p>
-        </div>
-      </div>
-
-      {/* Move history, Chess buttons */}
-      <div className="h-[648px] w-92 border-2 border-white">
-        {gamePhase !== GAME_PHASES.ONGOING ? (
-          <div>
-            <p className="text-center text-xl">Pick a color</p>
-            <div className="flex justify-around">
-              {new Array("white", "random", "black").map((color) => {
-                return (
-                  <button
-                    className={`rounded-xl cursor-pointer ${
-                      colorChoice === color ? "border-4 border-green-600" : ""
-                    }`}
-                    key={color}
-                    onClick={() => setColorChoice(color)}
-                  >
-                    <img
-                      src={`https://www.chess.com/bundles/web/images/play-side/${color}.svg`}
-                      alt={`Pick ${color} color`}
-                    />
-                  </button>
-                );
-              })}
-            </div>
-            <div className="flex justify-center">
-              <button
-                onClick={beginGame}
-                className="mt-2 w-5/6 bg-green-600 text-white font-extrabold text-xl px-8 py-4 rounded-xl cursor-pointer hover:bg-green-400"
-              >
-                Play
-              </button>
-            </div>
-          </div>
-        ) : (
-          <>
-            <p className="text-center">Play Bots</p>
-
-            {/* Chess buttons */}
-            <ChessHistoryButtons
-              setHistoryIndex={setHistoryIndex}
-              historyLength={history.length}
-            />
-
-            {/* Move history */}
-            <MoveHistory
-              history={chess.history()}
-              historyIndex={historyIndex}
-              setHistoryIndex={setHistoryIndex}
-            />
-          </>
-        )}
       </div>
     </div>
   );

@@ -6,7 +6,7 @@ const GameChat = ({
   sendChatMessage,
 }) => {
   return (
-    <div className="flex flex-col relative flex-1">
+    <div className="flex flex-col h-full relative flex-1">
       {/* Chat history*/}
       <ul className="overflow-y-auto max-h-[150px]">
         {chatHistory.map((message, index) => {

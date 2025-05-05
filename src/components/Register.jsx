@@ -45,7 +45,7 @@ const Register = () => {
       setErrorMessage(null);
 
       dispatch(addUser(data));
-      navigate("/play");
+      navigate("/");
       console.clear();
     } catch (error) {
       console.log(error);
@@ -55,7 +55,7 @@ const Register = () => {
 
   return (
     <form
-      className="bg-gray-900 text-white p-6 rounded-lg w-96 shadow-lg mx-auto"
+      className="bg-gray-900 text-white text-center p-6 rounded-lg w-96 shadow-lg mx-auto max-h-min"
       onSubmit={(e) => handleRegister(e)}
     >
       <h2 className="text-2xl font-bold text-center">Sign Up</h2>

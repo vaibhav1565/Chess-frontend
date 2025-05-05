@@ -21,23 +21,22 @@ import {
 } from "../utils/playConstants";
 
 import GameChat from "./GameChat";
-import GameStatus from "./GameStatus";
 import MoveHistory from "./MoveHistory";
-import ChessButtons from "./ChessButtons";
+import ChessButtons from "./ChessActionButtons";
 import DrawScreen from "./DrawScreen";
 import JoinWithCode from "./JoinWithCode";
 import InviteCode from "./InviteCode";
 import TimeControls from "./TimeControls";
 import GameNavbar from "./GameNavbar";
-import ChessboardOptions from "./ChessboardOptions";
-import { Chess } from "chess.js";
+import { Chess, DEFAULT_POSITION } from "chess.js";
 import ChessHistoryButtons from "./ChessHistoryButtons";
+import PlayerTile from "./PlayerTile";
+import StatusBar from "./StatusBar";
 
 console.clear();
 
 const sound_game_start = new Audio("sounds/game-start.mp3");
 const sound_game_end = new Audio("sounds/game-end.mp3");
-
 const sound_move_self = new Audio("sounds/move-self.mp3");
 const sound_move_opponent = new Audio("sounds/move-opponent.mp3");
 const sound_illegal = new Audio("sounds/illegal.mp3");
@@ -54,7 +53,7 @@ const Play = () => {
     playerColor: null,
   });
 
-  const [status, setStatus] = useState("");
+  const [status, setStatus] = useState("Click on play button to get started");
 
   const [chess, setChess] = useState(createChessInstance);
   const history = chess.history();
@@ -66,8 +65,6 @@ const Play = () => {
   const [rivalTime, setRivalTime] = useState(null);
   const userWorker = useRef(null);
   const opponentWorker = useRef(null);
-
-  const [popupToggle, setPopupToggle] = useState(null);
 
   const [inviteCode, setInviteCode] = useState(null);
   const [generatingInviteCode, setGeneratingInviteCode] = useState(false);
@@ -81,12 +78,8 @@ const Play = () => {
   const [isTimeToggled, setIsTimeToggled] = useState(false);
   const [isCustomToggled, setIsCustomToggled] = useState(false);
 
-  /* new_game | play | games | players */
+  /* new_game | play */
   const [navbar, setNavbar] = useState("new_game");
-
-  const [showAnim, setShowAnim] = useState(false);
-
-  const [showPopup, setShowPopup] = useState(false);
 
   const handleMessageRef = useRef(() => {});
 
@@ -173,76 +166,6 @@ const Play = () => {
     }
   };
 
-  function beginGame(payload) {
-    console.log("[GAME BEGIN]- function called");
-    resetState();
-
-    const timeLeft = payload.minutes * 60 * 1000;
-    setPlayerTime(timeLeft);
-    setRivalTime(timeLeft);
-    startTimerFor(
-      payload.color === COLORS.WHITE ? "user" : "opponent",
-      timeLeft
-    );
-
-    setGamePhase(GAME_PHASES.ONGOING);
-    setGameState({
-      playerColor: payload.color,
-      opponent: payload.opponent,
-    });
-    setStatus(
-      STATUS_MESSAGES.GAME_STARTED(
-        payload.color === COLORS.WHITE ? "White" : "Black"
-      )
-    );
-
-    setChatHistory((prev) => prev.concat("NEW GAME"));
-    setChatHistory((prev) =>
-      prev.concat(
-        `${user.data.username} vs ${payload.opponent.username} (${payload.minutes} min)`
-      )
-    );
-    setNavbar("play");
-    setShowAnim(true);
-
-    playSound(sound_game_start);
-  }
-
-  function endGame(reason, loser) {
-    console.log("[ENDGAME]- function called");
-    setGamePhase(GAME_PHASES.ENDED);
-    console.log("[GAME] Game over:", reason, loser);
-    const displayMessage =
-      `GAME OVER!\nReason-${reason}` + (loser ? ` Loser-${loser}` : "");
-    setStatus(displayMessage);
-    setPopupToggle(displayMessage);
-    setChatHistory((prev) => prev.concat(displayMessage));
-    cleanupTimers();
-
-    setShowAnim(false);
-
-    playSound(sound_game_end);
-  }
-
-  function handleOpponentMove(moveObject) {
-    const {latestMove, newChess} = makeChessMove(moveObject);
-    if (newChess === false) {
-      console.log("Error processing opponent's move");
-      return;
-    }
-
-    setChess(newChess);
-    console.log("[MOVE] Opponent made move:", newChess.history().slice(-1)[0]);
-    setHistoryIndex((prev) => prev + 1);
-
-    startTimerFor("user", playerTime);
-    checkGameOver();
-
-    if (!playMoveSound(latestMove)) {
-      playSound(sound_move_opponent);
-    }
-  }
-
   useEffect(() => {
     if (socket.current) return;
 
@@ -250,11 +173,8 @@ const Play = () => {
     if (!token) {
       // setConnectionError("No authentication token found");
       console.error("[SOCKET] No authentication token found");
-      setShowPopup(true);
       return;
     }
-
-    setShowPopup(false);
 
     const messageHandler = (event) => {
       handleMessageRef.current(JSON.parse(event.data));
@@ -294,11 +214,438 @@ const Play = () => {
     };
   }, []);
 
+  function acceptDraw() {
+    console.group("[ACCEPT DRAW]");
+    console.log("Accepting draw offer");
+
+    if (sendMessage(MESSAGE_TYPES.DRAW_ACCEPT)) {
+      console.log("Draw accepted successfully");
+      setDrawOffered(null);
+      setChatHistory((prev) =>
+        prev.concat(`${user?.data?.username} accepted a draw`)
+      );
+    } else {
+      console.log("Failed to accept draw");
+    }
+    console.groupEnd();
+  }
+
+  function beginGame(payload) {
+    console.group("[BEGIN GAME]");
+    console.log("Function called with payload:", payload);
+    resetState();
+
+    const timeLeft = payload.minutes * 60 * 1000;
+    setPlayerTime(timeLeft);
+    setRivalTime(timeLeft);
+    startTimerFor(
+      payload.color === COLORS.WHITE ? "user" : "opponent",
+      timeLeft
+    );
+
+    setGamePhase(GAME_PHASES.ONGOING);
+    setGameState({
+      playerColor: payload.color,
+      opponent: payload.opponent,
+    });
+    setStatus(
+      STATUS_MESSAGES.GAME_STARTED(
+        payload.color === COLORS.WHITE ? "White" : "Black"
+      )
+    );
+
+    setChatHistory((prev) => prev.concat("NEW GAME"));
+    setChatHistory((prev) =>
+      prev.concat(
+        `${user.data.username} vs ${payload.opponent.username} (${payload.minutes} min)`
+      )
+    );
+    setNavbar("play");
+
+    playSound(sound_game_start);
+    console.groupEnd();
+  }
+
+  function checkGameOver() {
+    console.group("[CHECK GAME OVER]");
+
+    if (!chess.isGameOver()) {
+      console.log("Game is not over yet");
+      console.groupEnd();
+      return;
+    }
+
+    console.log("Game is over");
+    setGamePhase(GAME_PHASES.ENDED);
+    cleanupTimers();
+    console.groupEnd();
+  }
+
+  function cleanupTimers() {
+    console.group("[TIMER CLEANUP]");
+    console.log("Cleaning up timer workers");
+
+    if (userWorker.current) {
+      console.log("Terminating user timer worker");
+      userWorker.current.cleanup();
+      userWorker.current = null;
+    }
+    if (opponentWorker.current) {
+      console.log("Terminating opponent timer worker");
+      opponentWorker.current.cleanup();
+      opponentWorker.current = null;
+    }
+    console.groupEnd();
+  }
+
+  function createInviteCode() {
+    console.group("[CREATE INVITE CODE]");
+    console.log("Function called");
+
+    if (generatingInviteCode) {
+      console.log("Already generating invite code");
+      console.groupEnd();
+      return;
+    }
+
+    if (
+      gamePhase === GAME_PHASES.ONGOING ||
+      gamePhase === GAME_PHASES.WAITING
+    ) {
+      console.log("Cannot generate invite code during ongoing game");
+      console.groupEnd();
+      return;
+    }
+
+    if (sendMessage(WEBSOCKET_MESSAGE_TYPES.CREATE_INVITE_CODE, { minutes })) {
+      console.log("Create invite code message sent");
+    } else {
+      console.log("Failed to send message");
+    }
+
+    console.groupEnd();
+  }
+
+  function endGame(reason, loser) {
+    console.group("[ENDGAME]");
+    console.log("Function called with reason:", reason, "loser:", loser);
+    setGamePhase(GAME_PHASES.ENDED);
+    const displayMessage =
+      `GAME OVER!\nReason-${reason}` + (loser ? ` Loser-${loser}` : "");
+    setStatus(displayMessage);
+    setChatHistory((prev) => prev.concat(displayMessage));
+    cleanupTimers();
+
+    playSound(sound_game_end);
+    console.groupEnd();
+  }
+
+  function handleOpponentMove(moveObject) {
+    console.group("[OPPONENT MOVE]");
+    console.log("Processing move:", moveObject);
+
+    const { success, latestMove, newChess } = makeChessMove(moveObject);
+    if (success === false) {
+      console.error("Error processing opponent's move");
+      console.groupEnd();
+      return;
+    }
+
+    setChess(newChess);
+    console.log("Opponent made move:", newChess.history().slice(-1)[0]);
+    setHistoryIndex((prev) => prev + 1);
+
+    startTimerFor("user", playerTime);
+    checkGameOver();
+
+    if (!playMoveSound(latestMove)) {
+      playSound(sound_move_opponent);
+    }
+    console.groupEnd();
+  }
+
+  function handlePieceDrop(sourceSquare, targetSquare, piece) {
+    console.group("[PIECE DROP]");
+    console.log("Piece dropped:", { sourceSquare, targetSquare, piece });
+
+    if (historyIndex !== history.length - 1) {
+      console.log("Rejecting move due to history mismatch");
+      setHistoryIndex(history.length - 1);
+      console.groupEnd();
+      return false;
+    }
+
+    if (gamePhase !== GAME_PHASES.ONGOING) {
+      console.log("Rejecting due to game phase:", gamePhase);
+      console.groupEnd();
+      return false;
+    }
+
+    if (gameState.playerColor !== chess.turn()) {
+      console.log("Rejecting due to turn mismatch");
+      console.groupEnd();
+      return false;
+    }
+
+    const moveObject = {
+      from: sourceSquare,
+      to: targetSquare,
+      promotion: piece[1].toLowerCase(),
+    };
+
+    const { success, latestMove, newChess } = makeChessMove(moveObject);
+    if (success === false) {
+      console.log("Move not successful");
+      console.groupEnd();
+      return false;
+    }
+
+    console.log("Move successful, sending to server:", moveObject);
+    if (sendMessage(MESSAGE_TYPES.MOVE, moveObject)) {
+      setChess(newChess);
+      setHistoryIndex((prev) => prev + 1);
+      startTimerFor("opponent", rivalTime);
+      checkGameOver();
+    } else {
+      console.log("Failed to send move to server");
+      console.groupEnd();
+      return false;
+    }
+
+    if (!playMoveSound(latestMove)) {
+      playSound(sound_move_self);
+    }
+    console.groupEnd();
+    return true;
+  }
+
+  function handleStartGame() {
+    console.group("[START GAME]");
+    console.log("Function called");
+
+    if (gamePhase === GAME_PHASES.ONGOING) {
+      console.log("Cannot start, there is ongoing game");
+      console.groupEnd();
+      return;
+    }
+
+    if (socket.current?.readyState !== WebSocket.OPEN) {
+      console.log("Socket state:", socket.current);
+      setStatus(STATUS_MESSAGES.WEBSOCKET_NOT_CONNECTED);
+      console.groupEnd();
+      return;
+    }
+
+    try {
+      socket.current.send(
+        JSON.stringify({
+          type: WEBSOCKET_MESSAGE_TYPES.JOIN_GAME_VIA_QUEUE,
+          payload: { minutes },
+        })
+      );
+      console.log("Join game request sent");
+    } catch (error) {
+      console.error("Error starting game:", error);
+      setStatus(STATUS_MESSAGES.FAILED_TO_START_GAME);
+    }
+    console.groupEnd();
+  }
+
+  function joinGameWithCode() {
+    console.group("[JOIN GAME WITH CODE]");
+    console.log("Attempting to join game with code:", joinCodeInput);
+
+    if (
+      gamePhase === GAME_PHASES.ONGOING ||
+      gamePhase === GAME_PHASES.WAITING
+    ) {
+      console.log("Cannot join - game in progress");
+      console.log(gamePhase);
+      console.groupEnd();
+      return;
+    }
+
+    if (socket.current?.readyState !== WebSocket.OPEN) {
+      console.log("Socket state:", socket.current?.readyState);
+      setStatus(STATUS_MESSAGES.WEBSOCKET_NOT_CONNECTED);
+      console.groupEnd();
+      return;
+    }
+
+    try {
+      const payload = {
+        type: WEBSOCKET_MESSAGE_TYPES.JOIN_GAME_VIA_INVITE,
+        payload: { inviteCode: joinCodeInput },
+      };
+      console.log("Sending join request:", payload);
+
+      socket.current.send(JSON.stringify(payload));
+      console.log("Join request sent");
+    } catch (error) {
+      console.error("Error joining game:", error);
+      setStatus(STATUS_MESSAGES.FAIL_JOIN_GAME);
+    }
+    console.groupEnd();
+  }
+
+  function makeChessMove(moveObject) {
+    console.group("[CHESS MOVE]");
+    console.log("Processing move:", moveObject);
+
+    const newChess = new Chess();
+    newChess.loadPgn(chess.pgn());
+
+    try {
+      const latestMove = newChess.move(moveObject);
+      console.log("Move successful:", latestMove.san);
+      console.groupEnd();
+      return { success: true, latestMove, newChess };
+    } catch (error) {
+      console.error("Invalid move:", error);
+      console.error("FEN", newChess.fen());
+      playSound(sound_illegal);
+      console.groupEnd();
+      return { success: false };
+    }
+  }
+
+  function offerDraw() {
+    console.group("[OFFER DRAW]");
+    console.log("Function called");
+
+    if (gamePhase !== GAME_PHASES.ONGOING) {
+      console.log("Cannot offer draw - game not active");
+      console.groupEnd();
+      return;
+    }
+
+    if (drawOffered) {
+      console.log("A draw is already offered");
+      console.groupEnd();
+      return;
+    }
+
+    setDrawOffered(user.data._id);
+    if (sendMessage(MESSAGE_TYPES.DRAW_OFFER)) {
+      console.log("Draw offer sent");
+      setChatHistory((prev) =>
+        prev.concat(`${user?.data?.username} offered a draw`)
+      );
+    } else {
+      console.log("Failed to offer draw");
+      setDrawOffered(null); // Reset on failure
+    }
+    console.groupEnd();
+  }
+
+  function rejectDraw() {
+    console.group("[REJECT DRAW]");
+    console.log("Rejecting draw offer");
+
+    if (sendMessage(MESSAGE_TYPES.DRAW_REJECT)) {
+      console.log("Draw rejected successfully");
+      setDrawOffered(null);
+      setChatHistory((prev) =>
+        prev.concat(`${user?.data?.username} declined a draw`)
+      );
+    } else {
+      console.log("Failed to reject draw");
+    }
+    console.groupEnd();
+  }
+
+  function resetState() {
+    console.group("[RESET STATE]");
+    console.log("resetState function called");
+
+    cleanupTimers();
+
+    setIsCustomToggled(false);
+    setIsTimeToggled(false);
+    setDrawOffered(null);
+
+    setChatInput("");
+
+    setJoinCodeInput("");
+
+    setInviteCode(null);
+    setGeneratingInviteCode(false);
+
+    setChess(createChessInstance);
+    setHistoryIndex(29);
+
+    userWorker.current = null;
+    opponentWorker.current = null;
+
+    console.log("State reset complete");
+    console.groupEnd();
+  }
+
+  function resignGame() {
+    console.group("[RESIGN GAME]");
+    console.log("Function called");
+
+    if (gamePhase !== GAME_PHASES.ONGOING) {
+      console.log("No ongoing game");
+      console.groupEnd();
+      return;
+    }
+
+    if (sendMessage(MESSAGE_TYPES.RESIGN)) {
+      console.log("Resign message sent");
+    } else {
+      console.log("Failed to send message to server");
+    }
+    console.groupEnd();
+  }
+
+  function sendChatMessage() {
+    console.group("[SEND CHAT]");
+    console.log("Function called");
+
+    if (gamePhase !== GAME_PHASES.ONGOING) {
+      console.log("Message not sent. There is no ongoing game");
+      console.groupEnd();
+      return;
+    }
+
+    const messageToSend = chatInput.trim();
+
+    if (
+      messageToSend.length == 0 ||
+      messageToSend.length > GAME_SETTINGS.MAX_MESSAGE_LENGTH
+    ) {
+      console.log("Message length must be 1-200 characters");
+      console.groupEnd();
+      return;
+    }
+
+    console.log("Sending message:", messageToSend);
+    if (sendMessage(MESSAGE_TYPES.CHAT_MESSAGE, { text: messageToSend })) {
+      console.log("Message sent");
+      setChatHistory((prev) =>
+        prev.concat({ from: user.data.username, text: messageToSend })
+      );
+      setChatInput("");
+    } else {
+      console.log("Failed to send chat message");
+    }
+    console.groupEnd();
+  }
+
   const setupWorker = (isUser, timeLeft) => {
+    console.group("[SETUP WORKER]");
+    console.log(
+      "Setting up worker for:",
+      isUser ? "user" : "opponent",
+      "with time:",
+      timeLeft
+    );
+
     const worker = new Worker(new URL("./timerWorker.js", import.meta.url));
 
     worker.onerror = (error) => {
-      console.error("[TIMER] Worker error:", error);
+      console.error("Worker error:", error);
       worker.terminate();
       setGamePhase(GAME_PHASES.ENDED);
     };
@@ -320,19 +667,28 @@ const Play = () => {
 
     worker.addEventListener("message", messageHandler);
 
+    console.log("Worker setup complete");
+    console.groupEnd();
+
     return {
       worker,
       cleanup: () => {
+        console.group("[WORKER CLEANUP]");
+        console.log("Cleaning up worker for:", isUser ? "user" : "opponent");
         worker.removeEventListener("message", messageHandler);
         worker.terminate();
+        console.groupEnd();
       },
     };
   };
 
   function setTimer(isUser, timeLeft) {
-    console.log("[TIMER] Switching timer. isUser:", isUser);
+    console.group("[SET TIMER]");
+    console.log("Switching timer. isUser:", isUser, "timeLeft:", timeLeft);
 
     if (timeLeft < 0) {
+      console.log("Invalid time value, not setting timer");
+      console.groupEnd();
       return;
     }
 
@@ -342,172 +698,16 @@ const Play = () => {
     } else {
       opponentWorker.current = setupWorker(false, timeLeft);
     }
-  }
-
-  function checkGameOver() {
-    if (!chess.isGameOver()) return;
-
-    setGamePhase(GAME_PHASES.ENDED);
-
-    console.log("[TIMER] Cleanup triggered");
-    cleanupTimers();
-  }
-
-  function handleStartGame() {
-    console.log("[START]- function called");
-    if (gamePhase === GAME_PHASES.ONGOING) {
-      console.log("[START]- Cannot start, there is ongoing game");
-      return;
-    }
-
-    if (socket.current?.readyState !== WebSocket.OPEN) {
-      console.log(socket.current);
-      setStatus(STATUS_MESSAGES.WEBSOCKET_NOT_CONNECTED);
-      return;
-    }
-
-    try {
-      socket.current.send(
-        JSON.stringify({
-          type: WEBSOCKET_MESSAGE_TYPES.JOIN_GAME_VIA_QUEUE,
-          payload: { minutes },
-        })
-      );
-    } catch (error) {
-      console.error("Error starting game:", error);
-      setStatus(STATUS_MESSAGES.FAILED_TO_START_GAME);
-    }
-  }
-
-  function handlePieceDrop(sourceSquare, targetSquare, piece) {
-    console.log("[MOVE] Piece dropped:", { sourceSquare, targetSquare, piece });
-
-    if (historyIndex !== history.length - 1) {
-      console.log("[MOVE] Rejecting move due to history mismatch");
-
-      setHistoryIndex(history.length - 1);
-      return false;
-    }
-
-    if (gamePhase !== GAME_PHASES.ONGOING) {
-      console.log("[MOVE] Rejecting due to game phase-", gamePhase);
-      return false;
-    }
-
-    if (gameState.playerColor !== chess.turn()) {
-      console.log("[MOVE] Rejecting due to turn mismatch");
-      return false;
-    }
-
-    const moveObject = {
-      from: sourceSquare,
-      to: targetSquare,
-      promotion: piece[1].toLowerCase(), // promotion in case of actual promotion, else, no error
-    };
-
-    const {latestMove, newChess} = makeChessMove(moveObject);
-    if (newChess === false) {
-      console.log("[MOVE] not successful");
-      return false;
-    }
-
-    console.log("[MOVE] Move successful, sending to server:", moveObject);
-    if (sendMessage(MESSAGE_TYPES.MOVE, moveObject)) {
-      setChess(newChess);
-      setHistoryIndex((prev) => prev + 1);
-      // setConnectionError(null);
-      startTimerFor("opponent", rivalTime);
-      checkGameOver();
-    } else {
-      console.log("[MOVE]- Failed to send move to server");
-      return false;
-    }
-
-    if (!playMoveSound(latestMove)) {
-      playSound(sound_move_self);
-    }
-    return true;
-  }
-
-  function resignGame() {
-    console.log("[RESIGN]- function called");
-    if (gamePhase !== GAME_PHASES.ONGOING) {
-      console.log("[RESIGN]- No ongoing game");
-      return;
-    }
-
-    if (sendMessage(MESSAGE_TYPES.RESIGN)) {
-      console.log("[RESIGN]- Message sent");
-    } else {
-      console.log("[RESIGN]- Failed to send message to server");
-    }
-  }
-
-  function createInviteCode() {
-    console.log("[CREATE INVITE CODE]- Function called");
-
-    if (generatingInviteCode) {
-      console.log("[INVITE]- already generating invite code");
-    } else if (
-      gamePhase === GAME_PHASES.ONGOING ||
-      gamePhase === GAME_PHASES.WAITING
-    ) {
-      console.log("[INVITE]- Cannot generate invite code during ongoing game");
-    } else {
-      if (
-        sendMessage(WEBSOCKET_MESSAGE_TYPES.CREATE_INVITE_CODE, { minutes })
-      ) {
-        console.log("[CREATE INVITE CODE]- Message sent");
-      } else {
-        console.log("[CREATE INVITE CODE]- Failed to send message");
-      }
-    }
-  }
-
-  function sendChatMessage() {
-    if (gamePhase !== GAME_PHASES.ONGOING) {
-      console.log("[CHAT]- Message not sent. There is no ongoing game");
-      return;
-    }
-
-    const messageToSend = chatInput.trim();
-
-    if (
-      messageToSend.length == 0 ||
-      messageToSend.length > GAME_SETTINGS.MAX_MESSAGE_LENGTH
-    ) {
-      console.log("[CHAT]- Message length must be 1-200 characters");
-      return;
-    }
-
-    console.log("[CHAT] sending message", messageToSend);
-    if (sendMessage(MESSAGE_TYPES.CHAT_MESSAGE, { text: messageToSend })) {
-      console.log("[CHAT] message sent");
-      setChatHistory((prev) =>
-        prev.concat({ from: user.data.username, text: messageToSend })
-      );
-      setChatInput("");
-    } else {
-      console.log("[CHAT]- Failed to send chat message");
-    }
-  }
-
-  function startTimerFor(role, timeLeft) {
-    console.log("[TIMER]- Starting timer for", role);
-    if (timeLeft <= 0) {
-      cleanupTimers();
-      setGamePhase(GAME_PHASES.ENDED);
-      return;
-    }
-    // if (phase !== GAME_PHASES.ONGOING) {
-    //   return;
-    // }
-    setTimer(role === "user", timeLeft);
+    console.groupEnd();
   }
 
   const sendMessage = (type, payload = null) => {
+    console.group("[SEND MESSAGE]");
+    console.log("Sending message type:", type, "payload:", payload);
+
     if (socket.current?.readyState !== WebSocket.OPEN) {
-      console.log(`[Send] Skipped sending "${type}", socket not open`);
+      console.log(`Skipped sending "${type}", socket not open`);
+      console.groupEnd();
       return false;
     }
 
@@ -515,217 +715,96 @@ const Play = () => {
       const sendObject = { type };
       if (payload) sendObject["payload"] = payload;
       socket.current.send(JSON.stringify(sendObject));
-      console.log(`[Send] ${type}`, sendObject);
+      console.log(`Message sent:`, sendObject);
+      console.groupEnd();
       return true;
     } catch (error) {
-      console.error(`[Send Error] ${type}`, error);
-      // setConnectionError("Failed to send object", type, payload);
+      console.error(`Error sending:`, error);
+      console.groupEnd();
       return false;
     }
   };
 
-  function offerDraw() {
-    if (gamePhase !== GAME_PHASES.ONGOING) {
-      console.log("[DRAW] Cannot offer draw - game not active");
-      return;
-    }
-    if (drawOffered) {
-      console.log("[DRAW]- A draw is already offered");
-      return;
-    }
-    setDrawOffered(user.data._id);
-    if (sendMessage(MESSAGE_TYPES.DRAW_OFFER)) {
-      setChatHistory((prev) =>
-        prev.concat(`${user?.data?.username} offered a draw`)
-      );
-    } else {
-      console.log("[DRAW]- Failed to offer draw");
-      setDrawOffered(null); // Reset on failure
-    }
-  }
+  function startTimerFor(role, timeLeft) {
+    console.group("[START TIMER]");
+    console.log("Starting timer for:", role, "timeLeft:", timeLeft);
 
-  function acceptDraw() {
-    console.log("[DRAW] Accepting draw offer");
-    if (sendMessage(MESSAGE_TYPES.DRAW_ACCEPT)) {
-      console.log("[DRAW] Draw accepted successfully");
-      setDrawOffered(null);
-      setChatHistory((prev) =>
-        prev.concat(`${user?.data?.username} accepted a draw`)
-      );
-    } else {
-      console.log("[DRAW]- Failed to accept draw");
-    }
-  }
-
-  function rejectDraw() {
-    console.log("[DRAW] Rejecting draw offer");
-    if (sendMessage(MESSAGE_TYPES.DRAW_REJECT)) {
-      console.log("[DRAW] Draw rejected successfully");
-      setDrawOffered(null);
-      setChatHistory((prev) =>
-        prev.concat(`${user?.data?.username} declined a draw`)
-      );
-    } else {
-      console.log("[DRAW] Failed to reject draw");
-    }
-  }
-
-  function makeChessMove(moveObject) {
-    console.group("[CHESS MOVE]");
-
-    const newChess = new Chess();
-    newChess.loadPgn(chess.pgn());
-
-    try {
-      const latestMove = newChess.move(moveObject);
-      console.log("Move successful:", moveObject.san);
+    if (timeLeft <= 0) {
+      console.log("Time is up, cleaning up timers");
+      cleanupTimers();
+      setGamePhase(GAME_PHASES.ENDED);
       console.groupEnd();
-      return { latestMove, newChess };
-    } catch (error) {
-      console.error("Invalid move:", error);
-      console.groupEnd();
-      playSound(sound_illegal);
-      return false;
-    }
-  }
-
-  function cleanupTimers() {
-    console.log("[TIMER CLEANUP]");
-
-    if (userWorker.current) {
-      console.log("Terminating user timer worker");
-      userWorker.current.cleanup();
-      userWorker.current = null;
-    }
-    if (opponentWorker.current) {
-      console.log("Terminating opponent timer worker");
-      opponentWorker.current.cleanup();
-      opponentWorker.current = null;
-    }
-  }
-
-  function resetState() {
-    console.log("[RESET]- resetState function called");
-
-    cleanupTimers();
-
-    setIsCustomToggled(false);
-    setIsTimeToggled(false);
-    setDrawOffered(null);
-
-    setChatInput("");
-    // setChatHistory([]);
-
-    setJoinCodeInput("");
-
-    setInviteCode(null);
-    setGeneratingInviteCode(false);
-
-    setChess(createChessInstance);
-    setHistoryIndex(29);
-
-    userWorker.current = null;
-    opponentWorker.current = null;
-
-    setPopupToggle(null);
-
-    setShowAnim(false);
-  }
-
-  function joinGameWithCode() {
-    console.log("[JOIN] Attempting to join game with code:", joinCodeInput);
-    console.log("[JOIN] Current game phase:", gamePhase);
-
-    if (
-      gamePhase === GAME_PHASES.ONGOING ||
-      gamePhase === GAME_PHASES.WAITING
-    ) {
-      console.log("[JOIN] Cannot join - game in progress");
-      console.log(gamePhase);
       return;
     }
 
-    if (socket.current?.readyState !== WebSocket.OPEN) {
-      console.log("[JOIN] Socket state:", socket.current?.readyState);
-      setStatus(STATUS_MESSAGES.WEBSOCKET_NOT_CONNECTED);
-      return;
-    }
-
-    try {
-      const payload = {
-        type: WEBSOCKET_MESSAGE_TYPES.JOIN_GAME_VIA_INVITE,
-        payload: { inviteCode: joinCodeInput },
-      };
-      console.log("[JOIN] Sending join request:", payload);
-
-      socket.current.send(JSON.stringify(payload));
-    } catch (error) {
-      console.error("[JOIN] Error joining game:", error);
-      setStatus(STATUS_MESSAGES.FAIL_JOIN_GAME);
-    }
+    setTimer(role === "user", timeLeft);
+    console.groupEnd();
   }
 
   return (
-    <div className="flex flex-col relative">
-      <GameStatus turn={chess.turn()} gameState={gameState} status={status} />
+    <div className="flex flex-col items-center justify-center w-full px-4 sm:px-6 lg:px-8 text-center">
+      <div className="w-full mb-4">
+        <StatusBar status={status} />
+        <p className="text-sm sm:text-base">
+          {gameState.playerColor
+            ? `${chess.turn() === COLORS.WHITE ? "White" : "Black"}'s turn`
+            : "\u00A0"}
+        </p>
+      </div>
 
-      <div className="flex relative">
-        <div className="flex flex-col relative">
-          <div className="flex justify-between">
-            <p className="font-bold">
-              {gameState.opponent ? gameState.opponent.username : "opponent"}
+      <div className="flex flex-col lg:flex-row items-center justify-center gap-6 py-4 w-full max-w-7xl mx-auto">
+        {/* Chessboard and players info */}
+        <div className="w-full max-w-[600px] lg:w-2/3 flex flex-col items-center">
+          <div className="w-full flex justify-between items-start mb-2">
+            <PlayerTile
+              playerName={
+                gameState.opponent ? gameState.opponent.username : "opponent"
+              }
+            />
+            <p className="text-lg font-bold text-gray-800 bg-gray-200 px-4 shadow-md h-min py-2">
+              {rivalTime ? formatTime(rivalTime) : "0:00"}
             </p>
-            <p>{rivalTime ? formatTime(rivalTime) : "0:00"}</p>
           </div>
-          <Chessboard
-            animationDuration={
-              historyIndex === chess.history().length - 1 ? 300 : 0
-            }
-            areArrowsAllowed={false}
-            boardOrientation={
-              gameState.playerColor === null ||
-              gameState.playerColor === COLORS.WHITE
-                ? "white"
-                : "black"
-            }
-            boardWidth={600}
-            onPieceDrop={handlePieceDrop}
-            position={
-              historyIndex > -1
-                ? chess.history({ verbose: true })[historyIndex]["after"]
-                : chess.fen()
-            }
-          />
-          <div className="flex justify-between">
-            <p className="font-bold">
-              {user?.data ? user.data.username : "user"}
+          <div className="w-full">
+            <Chessboard
+              animationDuration={
+                historyIndex === chess.history().length - 1 ? 300 : 0
+              }
+              areArrowsAllowed={false}
+              boardOrientation={
+                gameState.playerColor === null ||
+                gameState.playerColor === COLORS.WHITE
+                  ? "white"
+                  : "black"
+              }
+              onPieceDrop={handlePieceDrop}
+              position={
+                historyIndex === -1
+                  ? DEFAULT_POSITION
+                  : chess.history({ verbose: true })[historyIndex]["after"]
+              }
+            />
+          </div>
+          <div className="w-full flex justify-between mt-2">
+            <PlayerTile playerName={user?.data ? user.data.username : "user"} />
+            <p className="text-lg font-bold text-gray-800 bg-gray-200 px-4 shadow-md h-min py-2">
+              {playerTime ? formatTime(playerTime) : "0:00"}
             </p>
-            <p>{playerTime ? formatTime(playerTime) : "0:00"}</p>
           </div>
-
-          <ChessboardOptions
-            opponent={gameState.opponent?.username}
-            user={user?.data?.username}
-            showAnim={showAnim}
-            popupToggle={popupToggle}
-            setPopupToggle={setPopupToggle}
-            startGame={handleStartGame}
-            showPopup={showPopup}
-            closePopup={() => setShowPopup(false)}
-          />
         </div>
 
-        {/* Right side */}
-        <div className="w-92 h-[648px] flex flex-col border-2 border-white-700 ml-4 overflow-y-auto">
+        {/* Move history, Chess buttons */}
+        <div className="w-full max-w-[600px] lg:w-1/3 lg:h-[680px] p-6 rounded-xl mt-8 lg:mt-0 bg-gradient-to-br from-gray-800 via-gray-700 to-gray-900 shadow-lg border border-gray-600 transition-all duration-300 overflow-y-auto">
           <GameNavbar
             navbar={navbar}
             setNavbar={setNavbar}
             gamePhase={gamePhase}
           />
 
-          <div className="h-[320px]">
+          <div className="h-auto">
+            {/* <div className="h-auto lg:h-[320px]"> */}
             {navbar === "new_game" ? (
-              <div className="flex flex-col justify-center items-center text-center mt-4 pb-4">
+              <div className="flex flex-col justify-center items-center mt-4 pb-4 px-2">
                 <TimeControls
                   minutes={minutes}
                   setMinutes={setMinutes}
@@ -742,13 +821,13 @@ const Play = () => {
 
                 <button
                   onClick={() => setIsCustomToggled(!isCustomToggled)}
-                  className="flex items-center justify-center mt-2"
+                  className="mt-2 bg-purple-600 text-white font-bold px-4 py-2 rounded-lg shadow-md hover:bg-purple-500 transition-colors duration-200"
                 >
-                  <span className="cursor-pointer">Custom</span>
+                  Custom {isCustomToggled ? "⬆️" : "⬇️"}
                 </button>
 
                 {isCustomToggled && (
-                  <>
+                  <div className="w-full px-2 sm:px-0">
                     <JoinWithCode
                       joinCodeInput={joinCodeInput}
                       setJoinCodeInput={setJoinCodeInput}
@@ -760,7 +839,7 @@ const Play = () => {
                       inviteCode={inviteCode}
                       createInviteCode={createInviteCode}
                     />
-                  </>
+                  </div>
                 )}
               </div>
             ) : (
@@ -780,8 +859,8 @@ const Play = () => {
                   )}
                 </div>
 
-                <div className="flex flex-col h-[248px] text-black bg-blue-400">
-                  <div className="flex justify-between border-t border-gray-200">
+                <div className="flex flex-col h-full text-black bg-blue-400">
+                  <div className="flex justify-between p-2 border-t border-gray-200">
                     <ChessButtons
                       offerDraw={offerDraw}
                       resignGame={resignGame}

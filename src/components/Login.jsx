@@ -42,10 +42,10 @@ const Login = () => {
       }
 
       setErrorMessage(null);
-      console.log(res);
-      console.log(data);
+      // console.log(res);
+      // console.log(data);
       dispatch(addUser(data));
-      navigate("/play");
+      navigate("/");
     } catch (error) {
       console.log(error);
       setErrorMessage(`Failed to login: ${error.message}`);
@@ -54,7 +54,7 @@ const Login = () => {
 
   return (
     <form
-      className="bg-gray-900 text-white p-6 rounded-lg w-96 shadow-lg mx-auto"
+      className="bg-gray-900 text-white text-center p-6 rounded-lg w-96 shadow-lg mx-auto max-h-min"
       onSubmit={(e) => handleLogin(e)}
     >
       <h2 className="text-2xl font-bold text-center">Log In</h2>
@@ -62,7 +62,7 @@ const Login = () => {
         <input
           aria-label="Email"
           placeholder="Email"
-          className="w-full p-2 rounded bg-gray-800 border border-gray-700 mb-1"
+          className="w-full p-2 rounded bg-gray-800 border border-gray-700 mb-1 focus:outline-none focus:ring-2 focus:ring-green-500"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
         />
@@ -70,7 +70,7 @@ const Login = () => {
           aria-label="Password"
           type="password"
           placeholder="Password"
-          className="w-full p-2 rounded bg-gray-800 border border-gray-700 mt-3"
+          className="w-full p-2 rounded bg-gray-800 border border-gray-700 mt-3 focus:outline-none focus:ring-2 focus:ring-green-500"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
         />
@@ -79,7 +79,7 @@ const Login = () => {
         )}
         <button
           aria-label="Log In"
-          className="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-2 rounded mt-4"
+          className="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-2 rounded mt-4 transition duration-200"
         >
           Log In
         </button>
@@ -94,11 +94,6 @@ const Login = () => {
       >
         New? Sign up - and start playing chess!
       </button>
-
-      {/* <p className="text-center text-gray-400 mt-4 text-sm">OR</p>
-      <button className="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-2 rounded mt-4">
-        Play as a Guest
-      </button> */}
     </form>
   );
 };

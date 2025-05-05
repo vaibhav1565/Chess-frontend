@@ -7,7 +7,7 @@ const TimeControls = ({
   setIsTimeToggled,
 }) => {
   return (
-    <div className="flex flex-col gap-2 w-5/6 mb-4">
+    <div className="flex flex-col gap-2 w-5/6 mb-4 max-w-screen">
       <button
         onClick={() => setIsTimeToggled(!isTimeToggled)}
         className={`cursor-pointer flex items-center justify-center gap-2 p-4 rounded-xl transition-colors bg-gray-200 text-black hover:bg-gray-100`}
@@ -36,7 +36,9 @@ const TimeControls = ({
                           timeControl.increment
                             ? "cursor-not-allowed"
                             : "cursor-pointer"
-                        } px-3 py-2 text-black bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors text-sm font-medium`}
+                        }
+                        ${minutes === timeControl.minutes && ! timeControl.increment ? " border-3 border-green-500" : ""}
+                        px-3 py-2 text-black bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors text-sm font-medium`}
                       >
                         {timeControl.increment
                           ? `${timeControl.minutes} | ${timeControl.increment}`

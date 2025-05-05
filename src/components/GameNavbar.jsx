@@ -1,32 +1,24 @@
 import { GAME_PHASES } from "../utils/playConstants";
 
-const GameNavbar = ({ gamePhase, navbar, setNavbar }) => {
+const GameNavbar = ({ gamePhase, setNavbar }) => {
   return (
-    <div className="h-[80px] bg-gray-800 text-white flex justify-evenly items-center shadow-md">
-      { (
-          <button
-            onClick={() => setNavbar("play")}
-            disabled={(gamePhase === GAME_PHASES.NOT_STARTED ||
-        gamePhase === GAME_PHASES.WAITING)}
-            className={`px-4 py-2 text-sm font-medium uppercase tracking-wide transition-colors ${
-              navbar === "play"
-                ? "border-2 border-green-400 text-green-400"
-                : "border-2 border-transparent hover:text-green-300 hover:border-green-300"
-            }
-            ${(gamePhase === GAME_PHASES.NOT_STARTED ||
-        gamePhase === GAME_PHASES.WAITING) ? "cursor-not-allowed" : "cursor-pointer"}
-            `}
-          >
-            Play
-          </button>
-        )}
+    <div className="w-full flex justify-center items-center gap-4 p-4 bg-gray-100 shadow-md">
+      <button
+        onClick={() => setNavbar("play")}
+        disabled={
+          gamePhase === GAME_PHASES.NOT_STARTED ||
+          gamePhase === GAME_PHASES.WAITING
+        }
+        className="px-4 py-2 text-lg font-bold text-white bg-blue-500 rounded hover:bg-blue-600 disabled:bg-gray-400 disabled:cursor-not-allowed"
+      >
+        Play
+      </button>
       <button
         onClick={() => setNavbar("new_game")}
-        className={`cursor-pointer px-4 py-2 text-sm font-medium uppercase tracking-wide transition-colors ${
-          navbar === "new_game"
-            ? "border-2 border-green-400 text-green-400"
-            : "border-2 border-transparent hover:text-green-300 hover:border-green-300"
-        }`}
+        className="px-4 py-2 text-lg font-bold text-white bg-green-500 rounded hover:bg-green-600"
+        disabled={
+          gamePhase === GAME_PHASES.ONGOING || gamePhase === GAME_PHASES.WAITING
+        }
       >
         New Game
       </button>

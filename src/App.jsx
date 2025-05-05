@@ -1,23 +1,19 @@
 import { createBrowserRouter, Outlet, RouterProvider } from "react-router-dom";
 import Play from "./components/Play";
-// import Sidebar from "./components/Sidebar";
+import Header from "./components/Header";
 import { Provider } from "react-redux";
 import store from "./utils/store";
 import Login from "./components/Login";
 import Home from "./components/Home";
 import Register from "./components/Register";
 import Stockfish from "./components/Stockfish";
-import Header from "./components/Header";
 
 export default function App() {
   const AppLayout = () => {
     return (
       <>
-        {/* <Sidebar /> */}
         <Header />
-        {/* <div> */}
-          <Outlet />
-        {/* </div> */}
+        <Outlet />
       </>
     );
   };
