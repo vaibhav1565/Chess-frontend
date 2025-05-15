@@ -1,6 +1,6 @@
 const MoveHistory = ({ history, historyIndex, setHistoryIndex }) => {
   return (
-    <ul className="h-[300px] overflow-y-auto bg-gray-700 rounded-lg p-2 max-w-screen">
+    <ul className="overflow-y-auto w-full bg-gray-700 rounded-lg p-2 max-h-64">
       {(function () {
         let moveHistory = [];
         for (let move = 0; move < history.length; move += 2) {
@@ -11,7 +11,7 @@ const MoveHistory = ({ history, historyIndex, setHistoryIndex }) => {
         return (
           <li
             key={index}
-            className="grid grid-cols-3 px-2 lg:px-4 py-1 lg:py-2 items-center bg-white text-black hover:bg-gray-100 shadow-sm transition-all duration-200"
+            className="grid grid-cols-3 px-2 py-1 items-center bg-white text-black hover:bg-gray-100 shadow-sm transition-all duration-200 text-sm"
           >
             <span className="p-1 lg:p-2">{index + 1} .</span>
             <span

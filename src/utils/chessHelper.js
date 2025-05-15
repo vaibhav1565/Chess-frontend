@@ -1,22 +1,61 @@
 import { Chess } from "chess.js";
+import { INITIAL_PGN } from "./chessConstants";
 
 const sound_promote = new Audio("sounds/promote.mp3");
 const sound_capture = new Audio("sounds/capture.mp3");
 const sound_castle = new Audio("sounds/castle.mp3");
+const sound_illegal = new Audio("sounds/illegal.mp3");
 
-const pgn = `[Event "It (cat.17)"]
-[Site "Wijk aan Zee (Netherlands)"]
-[Date "1999.??.??"]
-[Round "?"]
-[White "Garry Kasparov"]
-[Black "Veselin Topalov"]
-[Result "1-0"]
-[TimeControl ""]
-[Link "https://www.chess.com/games/view/969971"]
-
-1. e4 d6 2. d4 Nf6 3. Nc3 g6 4. Be3 Bg7 5. Qd2 c6 6. f3 b5 7. Nge2 Nbd7 8. Bh6
-Bxh6 9. Qxh6 Bb7 10. a3 e5 11. O-O-O Qe7 12. Kb1 a6 13. Nc1 O-O-O 14. Nb3 exd4
-15. Rxd4 c5`;
+export const INITIAL_MESSAGES = [
+    {
+        from: "vaibhav",
+        text: "hey",
+    },
+    {
+        from: "parth",
+        text: "hi",
+    },
+    {
+        from: "vaibhav",
+        text: "hey",
+    },
+    {
+        from: "parth",
+        text: "hi",
+    },
+    {
+        from: "vaibhav",
+        text: "hey",
+    },
+    {
+        from: "parth",
+        text: "hi",
+    },
+    {
+        from: "vaibhav",
+        text: "hey",
+    },
+    {
+        from: "parth",
+        text: "hi",
+    },
+    {
+        from: "vaibhav",
+        text: "hey",
+    },
+    {
+        from: "parth",
+        text: "hi",
+    },
+    {
+        from: "vaibhav",
+        text: "hey",
+    },
+    {
+        from: "parth",
+        text: "hi",
+    },
+];
 
 export function getTokenFromCookies() {
     const cookies = document.cookie.split("; ");
@@ -35,12 +74,6 @@ export function formatTime(milliseconds) {
         "0"
     )}`;
 }
-
-export const createChessInstance = () => {
-    const chessInstance = new Chess();
-    chessInstance.loadPgn(pgn);
-    return chessInstance;
-};
 
 export function playMoveSound(moveObject) {
     if (moveObject.isKingsideCastle() || moveObject.isQueensideCastle()) {
@@ -62,3 +95,30 @@ export function playSound(sound) {
     sound.currentTime = 0;
     sound.play();
 }
+
+export function makeChessMove(moveObject, chessInstance) {
+    console.group("[CHESS MOVE]");
+
+    const newChess = new Chess();
+    newChess.loadPgn(chessInstance.pgn());
+
+    try {
+        const latestMove = newChess.move(moveObject);
+        console.log("Move successful:", latestMove.san);
+        console.groupEnd();
+
+        return { success: true, latestMove, newChess };
+    } catch (error) {
+        console.error("Invalid move:", error);
+        console.error("FEN", newChess.fen());
+        console.groupEnd();
+        playSound(sound_illegal);
+        return { success: false };
+    }
+}
+
+export const createChessInstance = () => {
+    const chessInstance = new Chess();
+    // chessInstance.loadPgn(INITIAL_PGN, {strict: true});
+    return chessInstance;
+};

@@ -7,6 +7,7 @@ import Login from "./components/Login";
 import Home from "./components/Home";
 import Register from "./components/Register";
 import Stockfish from "./components/Stockfish";
+import PlayLocal from "./components/PlayLocal";
 
 export default function App() {
   const AppLayout = () => {
@@ -41,6 +42,10 @@ export default function App() {
         {
           path: "/stockfish",
           element: <Stockfish />,
+        },
+        {
+          path: "/local",
+          element: <PlayLocal />,
         },
       ],
     },

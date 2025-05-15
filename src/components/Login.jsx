@@ -4,7 +4,7 @@ import { useDispatch } from "react-redux";
 import { checkValidData } from "../utils/validate";
 import { addUser } from "../utils/userSlice";
 import { useNavigate } from "react-router-dom";
-import { BASE_URL } from "../utils/constants";
+import { BASE_URL } from "../utils/otherConstants";
 
 const Login = () => {
   const dispatch = useDispatch();
