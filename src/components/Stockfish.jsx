@@ -424,11 +424,13 @@ const Stockfish = () => {
               </div>
 
               {/* Move history */}
-              <MoveHistory
-                history={chess.history()}
-                historyIndex={historyIndex}
-                setHistoryIndex={setHistoryIndex}
-              />
+              {history.length !== 0 && (
+                <MoveHistory
+                  history={history}
+                  historyIndex={historyIndex}
+                  setHistoryIndex={setHistoryIndex}
+                />
+              )}
             </>
           )}
         </div>

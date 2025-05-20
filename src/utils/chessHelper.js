@@ -1,5 +1,5 @@
 import { Chess } from "chess.js";
-import { INITIAL_PGN } from "./chessConstants";
+// import { INITIAL_PGN } from "./chessConstants";
 
 const sound_promote = new Audio("sounds/promote.mp3");
 const sound_capture = new Audio("sounds/capture.mp3");
@@ -56,6 +56,18 @@ export const INITIAL_MESSAGES = [
         text: "hi",
     },
 ];
+
+export const GAME_PHASES = {
+  NOT_STARTED: "not_started",
+  WAITING: "waiting",
+  ONGOING: "ongoing",
+  ENDED: "ended",
+};
+
+export const NAVBAR_PHASES = {
+  NEW_GAME: "new_game",
+  PLAY: "play",
+};
 
 export function getTokenFromCookies() {
     const cookies = document.cookie.split("; ");
@@ -122,3 +134,38 @@ export const createChessInstance = () => {
     // chessInstance.loadPgn(INITIAL_PGN, {strict: true});
     return chessInstance;
 };
+
+export function generateSquareStyles(moveFrom, chess) {
+    const squareStyles = {};
+    if (!moveFrom) return squareStyles;
+
+    squareStyles[moveFrom] = { background: "rgba(255, 255, 0, 0.4)" };
+    for (let chessMove of chess.moves({ square: moveFrom, verbose: true })) {
+        squareStyles[chessMove["to"]] = {
+            background:
+                chess.get(chessMove["to"]) &&
+                    chess.get(chessMove["to"]).color !== chess.get(moveFrom).color
+                    ? "radial-gradient(circle, rgba(0,0,0,.1) 85%, transparent 85%)"
+                    : "radial-gradient(circle, rgba(0,0,0,.1) 25%, transparent 25%)",
+            borderRadius: "50%",
+        };
+    }
+    return squareStyles;
+}
+
+export function safeGameMutate(modify, setChess) {
+    let isSuccessful = false;
+    setChess((game) => {
+      try {
+        const update = new Chess();
+        update.loadPgn(game.pgn());
+        modify(update);
+        isSuccessful = true;
+        return update;
+      } catch {
+        return game;
+      }
+    });
+
+    return isSuccessful;
+}

@@ -11,6 +11,8 @@ import {
   makeChessMove,
   INITIAL_MESSAGES,
   createChessInstance,
+  GAME_PHASES,
+  NAVBAR_PHASES,
 } from "../utils/chessHelper";
 
 import {
@@ -19,6 +21,7 @@ import {
   GAME_SETTINGS,
   WEBSOCKET_MESSAGE_TYPES,
   INVITE,
+  GAME_END_REASONS,
 } from "../utils/chessConstants";
 
 import GameChat from "./GameChat";
@@ -39,18 +42,6 @@ const sound_move_opponent = new Audio("sounds/move-opponent.mp3");
 
 console.clear();
 
-const GAME_PHASES = {
-  NOT_STARTED: "not_started",
-  WAITING: "waiting",
-  ONGOING: "ongoing",
-  ENDED: "ended",
-};
-
-const NAVBAR_PHASES = {
-  NEW_GAME: "new_game",
-  PLAY: "play",
-};
-
 const Play = () => {
   const [gamePhase, setGamePhase] = useState(GAME_PHASES.NOT_STARTED);
 
@@ -59,7 +50,7 @@ const Play = () => {
   const user = useSelector((store) => store.user);
 
   const [gameState, setGameState] = useState({
-    opponent: null,
+    rival: null,
     playerColor: null,
   });
 
@@ -139,10 +130,10 @@ const Play = () => {
       case MESSAGE_TYPES.DRAW_ACCEPTED: {
         console.log("Message- Draw accepted");
         setChatHistory((prev) =>
-          prev.concat(`${gameState.opponent?.username} accepted a draw`)
+          prev.concat(`${gameState.rival?.username} accepted a draw`)
         );
         setIsDraw(null);
-        userWorker.current?.postMessage({type: "stop"});
+        userWorker.current?.postMessage({ type: "stop" });
         rivalWorker.current?.postMessage({ type: "stop" });
         break;
       }
@@ -150,16 +141,16 @@ const Play = () => {
       case MESSAGE_TYPES.DRAW_OFFER: {
         console.log("Message- Draw offer received");
         setChatHistory((prev) =>
-          prev.concat(`${gameState.opponent?.username} offered a draw`)
+          prev.concat(`${gameState.rival?.username} offered a draw`)
         );
-        setIsDraw(gameState.opponent._id);
+        setIsDraw(gameState.rival._id);
         break;
       }
 
       case MESSAGE_TYPES.DRAW_REJECTED: {
         console.log("Message- Draw rejected");
         setChatHistory((prev) =>
-          prev.concat(`${gameState.opponent?.username} rejected a draw`)
+          prev.concat(`${gameState.rival?.username} rejected a draw`)
         );
         setIsDraw(null);
         break;
@@ -187,29 +178,39 @@ const Play = () => {
   };
 
   useEffect(() => {
-    if (socket.current) return;
+    let ignore = false;
+    const controller = new AbortController();
+    const signal = controller.signal;
+
+    if (ignore || socket.current) return;
+
+    console.log("useEffect called");
 
     const token = getTokenFromCookies();
     if (!token) {
-      console.error("[SOCKET] No authentication token found");
+      console.log("[SOCKET] No authentication token found");
       return;
     }
 
     const openHandler = () => {
+      if (signal.aborted) return;
       console.log("[SOCKET] Connection opened");
     };
 
     const closeHandler = () => {
+      if (signal.aborted) return;
       console.log("[SOCKET] Connection closed");
       socket.current = null;
     };
 
     const messageHandler = (event) => {
+      if (signal.aborted) return;
       handleMessageRef.current(JSON.parse(event.data));
     };
 
     const errorHandler = (error) => {
-      console.error("[SOCKET] Connection error:", error);
+      if (signal.aborted) return;
+      console.log("[SOCKET] Connection error:", error);
       socket.current = null;
     };
 
@@ -224,18 +225,25 @@ const Play = () => {
     socket.current.addEventListener("close", closeHandler);
 
     return () => {
-      userWorker.current?.terminate();
-      userWorker.current = null;
-      rivalWorker.current?.terminate();
-      rivalWorker.current = null;
-
-      console.log("[SOCKET] Cleaning up WebSocket connection...");
-      socket.current?.removeEventListener("message", messageHandler);
-      socket.current?.removeEventListener("error", errorHandler);
-      socket.current?.removeEventListener("open", openHandler);
-      socket.current?.removeEventListener("close", closeHandler);
-      socket.current?.close();
-      socket.current = null;
+      console.log("useEffect cleanup");
+      ignore = true;
+      controller.abort(); // Abort any ongoing operations
+      if (socket.current) {
+        socket.current.removeEventListener("message", messageHandler);
+        socket.current.removeEventListener("error", errorHandler);
+        socket.current.removeEventListener("open", openHandler);
+        socket.current.removeEventListener("close", closeHandler);
+        socket.current.close();
+        socket.current = null;
+      }
+      if (userWorker.current) {
+        userWorker.current.terminate();
+        userWorker.current = null;
+      }
+      if (rivalWorker.current) {
+        rivalWorker.current.terminate();
+        rivalWorker.current = null;
+      }
     };
   }, []);
 
@@ -262,7 +270,7 @@ const Play = () => {
     setGamePhase(GAME_PHASES.ONGOING);
     setGameState({
       playerColor: payload.color,
-      opponent: payload.opponent,
+      rival: payload.opponent,
     });
 
     setStatus(
@@ -274,17 +282,27 @@ const Play = () => {
     setChatHistory((prev) => prev.concat("NEW GAME"));
     setChatHistory((prev) =>
       prev.concat(
-        `${user.data.username} vs ${payload.opponent.username} (${payload.minutes}|${payload.incrementPerTurn} min)`
+        `${user.data.username} vs ${payload.opponent.username} (${payload.minutes}|${payload.increment} min)`
       )
     );
     setNavbar(NAVBAR_PHASES.PLAY);
 
     const timeLeft = payload.minutes * 60 * 1000;
-    const incrementPerTurn = payload.incrementPerTurn * 1000;
+    const increment = payload.increment * 1000;
     setPlayerTime(timeLeft);
     setRivalTime(timeLeft);
-    userWorker.current = setupWorker(true, timeLeft, incrementPerTurn, payload.color === COLORS.WHITE);
-    rivalWorker.current = setupWorker(false, timeLeft, incrementPerTurn, payload.color === COLORS.BLACK);
+    userWorker.current = setupWorker(
+      true,
+      timeLeft,
+      increment,
+      payload.color === COLORS.WHITE
+    );
+    rivalWorker.current = setupWorker(
+      false,
+      timeLeft,
+      increment,
+      payload.color === COLORS.BLACK
+    );
 
     playSound(sound_game_start);
     console.groupEnd();
@@ -308,7 +326,9 @@ const Play = () => {
       return;
     }
 
-    if (sendMessage(WEBSOCKET_MESSAGE_TYPES.CREATE_INVITE_CODE, {timeConfig})) {
+    if (
+      sendMessage(WEBSOCKET_MESSAGE_TYPES.CREATE_INVITE_CODE, { timeConfig })
+    ) {
       console.log("Create invite code message sent");
     } else {
       console.log("Failed to send create invite code message");
@@ -326,8 +346,44 @@ const Play = () => {
     rivalWorker.current?.postMessage({ type: "stop" });
 
     setIsDraw(null);
-    const displayMessage =
-      `GAME OVER!\nReason-${reason}` + (loser ? ` Loser-${loser}` : "");
+
+    let displayMessage;
+    const isUserLoser = loser === user.data._id;
+
+    switch (reason) {
+      case GAME_END_REASONS.CHECKMATE:
+        displayMessage = `Game Over!\n${
+          isUserLoser ? "Checkmate - You lost!" : "Checkmate - You won!"
+        }`;
+        break;
+
+      case GAME_END_REASONS.DRAW:
+        displayMessage = "Game Over!\nDraw by stalemate!";
+        break;
+
+      case GAME_END_REASONS.DRAW_BY_AGREEMENT:
+        displayMessage = "Game Over!\nDraw by mutual agreement";
+        break;
+
+      case GAME_END_REASONS.RESIGN:
+        displayMessage = `Game Over!\n${
+          isUserLoser ? "You resigned" : "Opponent resigned - You won!"
+        }`;
+        break;
+
+      case GAME_END_REASONS.TIMEOUT:
+        displayMessage = `Game Over!\n${
+          isUserLoser
+            ? "Time's up - You lost!"
+            : "Opponent ran out of time - You won!"
+        }`;
+        break;
+
+      case GAME_END_REASONS.ABORT:
+        displayMessage = "Game Aborted";
+        break;
+    }
+
     setStatus(displayMessage);
     setChatHistory((prev) => prev.concat(displayMessage));
 
@@ -344,8 +400,8 @@ const Play = () => {
     console.group("[CHECK GAME OVER] successful");
 
     setGamePhase(GAME_PHASES.ENDED);
-    userWorker.current?.postMessage({type: "stop"});
-    rivalWorker.current?.postMessage({type: "stop"});
+    userWorker.current?.postMessage({ type: "stop" });
+    rivalWorker.current?.postMessage({ type: "stop" });
     console.groupEnd();
     return true;
   }
@@ -356,7 +412,7 @@ const Play = () => {
 
     const { success, latestMove, newChess } = makeChessMove(moveObject, chess);
     if (success === false) {
-      console.error("Error processing opponent's move");
+      console.log("Error processing opponent's move");
       console.groupEnd();
       return;
     }
@@ -491,7 +547,7 @@ const Play = () => {
       });
       console.log("Join request sent");
     } catch (error) {
-      console.error("Error joining game with code:", error);
+      console.log("Error joining game with code:", error);
       setStatus("Failed to join game");
     }
     console.groupEnd();
@@ -535,6 +591,17 @@ const Play = () => {
 
   function resetState() {
     console.group("[RESET STATE]");
+
+    setStatus("Click on play button to get started");
+    setNavbar(NAVBAR_PHASES.NEW_GAME);
+
+    setGameState({
+      rival: null,
+      playerColor: null,
+    });
+
+    setPlayerTime(null);
+    setRivalTime(null);
 
     setIsCustom(false);
     setIsTimeConfig(false);
@@ -623,13 +690,13 @@ const Play = () => {
       console.groupEnd();
       return true;
     } catch (error) {
-      console.error(`Error sending:`, error);
+      console.log(`Error sending:`, error);
       console.groupEnd();
       return false;
     }
   }
 
-  function setupWorker(isUser, totalTime, incrementPerTurn, isStart) {
+  function setupWorker(isUser, totalTime, increment, isStart) {
     console.group("[SETUP WORKER]");
     console.log(
       "Setting up worker for:",
@@ -637,7 +704,7 @@ const Play = () => {
       "with time:",
       totalTime,
       "and increment count",
-      incrementPerTurn
+      increment
     );
 
     const worker = new Worker(
@@ -655,17 +722,16 @@ const Play = () => {
     });
 
     worker.addEventListener("error", (error) => {
-      console.error("Worker error:", error);
+      console.log("Worker error:", error);
       worker.terminate();
       setGamePhase(GAME_PHASES.ENDED);
     });
-
 
     worker.postMessage({
       type: isStart ? "initAndStart" : "init",
       payload: {
         totalTime,
-        incrementPerTurn,
+        increment,
         tickRate: GAME_SETTINGS.INTERVAL,
       },
     });
@@ -676,7 +742,7 @@ const Play = () => {
 
   function startTimer(isUser) {
     console.group("[START TIMER]");
-    console.log("Starting timer for", isUser ? "user" : "opponent");
+    console.log("Starting timer for", isUser ? "user" : "rival");
 
     userWorker.current.postMessage({
       type: isUser ? "start" : "stop",
@@ -692,11 +758,13 @@ const Play = () => {
     <div className="flex flex-col items-center justify-center w-full px-4 sm:px-6 lg:px-8 text-center">
       <div className="w-full mb-4">
         <StatusBar status={status} />
-        <p className="text-sm sm:text-base">
-          {gameState.playerColor
-            ? `${chess.turn() === COLORS.WHITE ? "White" : "Black"}'s turn`
-            : "\u00A0"}
-        </p>
+        {gamePhase === GAME_PHASES.ONGOING && (
+          <p className="text-sm sm:text-base">
+            {gameState.playerColor
+              ? `${chess.turn() === COLORS.WHITE ? "White" : "Black"}'s turn`
+              : "\u00A0"}
+          </p>
+        )}
       </div>
 
       <div className="flex flex-col lg:flex-row items-center justify-center gap-6 py-4 w-full max-w-7xl mx-auto">
@@ -705,7 +773,7 @@ const Play = () => {
           <div className="w-full flex justify-between items-start">
             <PlayerTile
               playerName={
-                gameState.opponent ? gameState.opponent.username : "opponent"
+                gameState.rival ? gameState.rival.username : "opponent"
               }
             />
             <p className="text-lg font-bold text-gray-800 bg-gray-200 px-4 shadow-md h-min py-2">
@@ -784,23 +852,25 @@ const Play = () => {
           ) : (
             <div className="w-full h-full flex flex-col overflow-hidden">
               <div className="flex flex-col flex-grow overflow-y-auto">
-                {isDraw === gameState.opponent._id ? (
+                {isDraw === gameState.rival._id ? (
                   <DrawScreen acceptDraw={acceptDraw} rejectDraw={rejectDraw} />
                 ) : (
                   <>
-                    <MoveHistory
-                      history={history}
-                      historyIndex={historyIndex}
-                      setHistoryIndex={setHistoryIndex}
-                    />
-                    {/* {gamePhase === GAME_PHASES.ENDED && (
+                    {history.length !== 0 && (
+                      <MoveHistory
+                        history={history}
+                        historyIndex={historyIndex}
+                        setHistoryIndex={setHistoryIndex}
+                      />
+                    )}
+                    {gamePhase === GAME_PHASES.ENDED && (
                       <button
                         onClick={resetState}
                         className="font-bold bg-blue-600 py-2 px-4 rounded-lg shadow-md hover:bg-blue-500 transition duration-200 w-fit mx-auto"
                       >
                         New Game
                       </button>
-                    )} */}
+                    )}
                   </>
                 )}
               </div>

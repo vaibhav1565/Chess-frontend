@@ -15,6 +15,32 @@ const Register = () => {
   const [password, setPassword] = useState("");
   const [errorMessage, setErrorMessage] = useState(null);
 
+  async function createGuestAccount() {
+    setErrorMessage(null);
+
+    try {
+      const res = await fetch(BASE_URL + "/guest/signup",{
+        method: "POST",
+        credentials: "include"
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || `HTTP error! Status: ${res.status}`);
+      }
+
+      setErrorMessage(null);
+      dispatch(addUser(data));
+      navigate("/");
+      console.clear();
+    }
+    catch (error) {
+      console.log(error);
+      setErrorMessage(`Failed to signup: ${error.message}`);
+    }
+  }
+
   async function handleRegister(e) {
     e.preventDefault();
 
@@ -97,6 +123,14 @@ const Register = () => {
       </div>
 
       <p className="text-center text-gray-400 mt-4 text-sm">OR</p>
+      <button
+        aria-label="Create a guest account"
+        className="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-2 rounded mt-4"
+        onClick={createGuestAccount}
+        type="button"
+      >
+        Play as a Guest
+      </button>
 
       <button
         aria-label="Navigate to login page"
@@ -106,11 +140,6 @@ const Register = () => {
       >
         Already have an account? Log In
       </button>
-
-      {/* <p className="text-center text-gray-400 mt-4 text-sm">OR</p>
-      <button className="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-2 rounded mt-4">
-        Play as a Guest
-      </button> */}
     </form>
   );
 };

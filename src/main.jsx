@@ -4,8 +4,8 @@ import App from './App.jsx'
 import { StrictMode } from 'react';
 
 createRoot(document.getElementById("root")).render(
-  <App />
-  // <StrictMode>
   // <App />
-  // </StrictMode>
+  <StrictMode>
+  <App />
+  </StrictMode>
 );

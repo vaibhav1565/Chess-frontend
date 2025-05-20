@@ -23,27 +23,30 @@ const Header = () => {
         return;
       }
 
-      try {
-        const res = await fetch(`${BASE_URL}/profile/view`, {
-          credentials: "include",
-          signal: controller.signal,
-        });
+      if (document.cookie) {
+        try {
+          const res = await fetch(`${BASE_URL}/profile/view`, {
+            credentials: "include",
+            signal: controller.signal,
+          });
 
-        if (!res.ok) {
-          throw new Error(`HTTP error! Status: ${res.status}`);
-        }
+          if (!res.ok) {
+            throw new Error(`HTTP error! Status: ${res.status}`);
+          }
 
-        const json = await res.json();
-        dispatch(addUser(json));
-      } catch (e) {
-        // if (
-        //   e.name === "TypeError" &&
-        //   e.message === "NetworkError when attempting to fetch resource."
-        // ) {
-        //   console.log("Error while connecting to the backend");
-        // }
-        if (e.name !== "AbortError") {
-          console.log(e);
+          const json = await res.json();
+          console.log(json);
+          dispatch(addUser(json));
+        } catch (e) {
+          // if (
+          //   e.name === "TypeError" &&
+          //   e.message === "NetworkError when attempting to fetch resource."
+          // ) {
+          //   console.log("Error while connecting to the backend");
+          // }
+          if (e.name !== "AbortError") {
+            console.log(e);
+          }
         }
       }
     }

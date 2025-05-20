@@ -4,7 +4,7 @@ let remainingTime;
 let previousTimestamp;
 
 let tickRate;
-let incrementPerTurn;
+// let increment;
 
 function startTimer() {
     clearInterval(interval);
@@ -29,7 +29,7 @@ onmessage = (e) => {
     switch (type) {
         case "init": {
             console.log('Initializing timer');
-            incrementPerTurn = payload.incrementPerTurn;
+            // increment = payload.increment;
             remainingTime = payload.totalTime;
             tickRate = payload.tickRate;
             break;
@@ -37,7 +37,7 @@ onmessage = (e) => {
 
         case "initAndStart": {
             console.log('Initializing and starting timer');
-            incrementPerTurn = payload.incrementPerTurn;
+            // increment = payload.increment;
             remainingTime = payload.totalTime;
             tickRate = payload.tickRate;
             startTimer();
@@ -66,8 +66,10 @@ onmessage = (e) => {
         }
 
         // case "addIncrement": {
-        //     remainingTime += incrementPerTurn;
+        //     remainingTime += increment;
         //     break;
         // }
     }
 };
+
+// workers cannot import es module

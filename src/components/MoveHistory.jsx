@@ -1,3 +1,4 @@
+/* eslint-disable react/prop-types */
 const MoveHistory = ({ history, historyIndex, setHistoryIndex }) => {
   return (
     <ul className="overflow-y-auto w-full bg-gray-700 rounded-lg p-2 max-h-64">
