@@ -1,4 +1,4 @@
-import { Chess, DEFAULT_POSITION } from "chess.js";
+import { Chess } from "chess.js";
 import { useState } from "react";
 import { Chessboard } from "react-chessboard";
 
@@ -301,7 +301,7 @@ const PlayLocal = () => {
               onSquareClick={handleSquareClick}
               position={
                 historyIndex === -1
-                  ? DEFAULT_POSITION
+                  ? "start"
                   : chess.history({ verbose: true })[historyIndex]["after"]
               }
               showPromotionDialog={showPromotionDialog}

@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useSelector } from "react-redux";
 import { Chessboard } from "react-chessboard";
-import { DEFAULT_POSITION } from "chess.js";
 
 import {
   getTokenFromCookies,
@@ -795,7 +794,7 @@ const Play = () => {
               onPieceDrop={handlePieceDrop}
               position={
                 historyIndex === -1
-                  ? DEFAULT_POSITION
+                  ? "start"
                   : chess.history({ verbose: true })[historyIndex]["after"]
               }
             />

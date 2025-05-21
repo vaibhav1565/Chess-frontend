@@ -1,4 +1,4 @@
-import { Chess, DEFAULT_POSITION } from "chess.js";
+import { Chess } from "chess.js";
 import { useRef, useState } from "react";
 import { Chessboard } from "react-chessboard";
 import { useSelector } from "react-redux";
@@ -337,7 +337,7 @@ const Stockfish = () => {
               onPieceDrop={handlePieceDrop}
               position={
                 historyIndex === -1
-                  ? DEFAULT_POSITION
+                  ? "start"
                   : chess.history({ verbose: true })[historyIndex]["after"]
               }
             />
