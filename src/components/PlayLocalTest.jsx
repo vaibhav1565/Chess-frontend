@@ -1,8 +1,9 @@
 import { Chess } from "chess.js";
 import { useState } from "react";
 import { Chessboard } from "react-chessboard";
+import { generateSquareStyles, isPromotionMove, onPromotionCheck } from "../utils/chessHelper";
 
-const PlayLocal3 = () => {
+const PlayLocalTest = () => {
   // const [game, setGame] = useState(new Chess());
   const [game, setGame] = useState(
     new Chess("rnbqkbn1/ppppp2P/5p2/8/8/8/PPPPPP1P/RNBQKBNR w KQq - 0 5")
@@ -11,48 +12,20 @@ const PlayLocal3 = () => {
   const [moveTo, setMoveTo] = useState(null);
   const [showPromotionDialog, setShowPromotionDialog] = useState(false);
 
-  function generateSquareStyles() {
-    const optionSquares = {};
-    if (!moveFrom) return optionSquares;
-
-    const moves = game.moves({
-      square: moveFrom,
-      verbose: true,
-    });
-
-    optionSquares[moveFrom] = {
-      background: "rgba(255, 255, 0, 0.4)",
-    };
-
-    moves.map((move) => {
-      optionSquares[move.to] = {
-        background:
-          game.get(move.to) &&
-          game.get(move.to).color !== game.get(moveFrom).color
-            ? "radial-gradient(circle, rgba(0,0,0,.3) 85%, transparent 85%)"
-            : "radial-gradient(circle, rgba(0,0,0,.3) 25%, transparent 25%)",
-        borderRadius: "50%",
-      };
-      return move;
-    });
-    return optionSquares;
-  }
-
-  function isPromotionMove(foundMove) {
-    return (
-      foundMove.piece === "p" &&
-      ((foundMove.color === "w" && foundMove.to[1] === "8") ||
-        (foundMove.color === "b" && foundMove.to[1] === "1"))
+  function handlePromotionCheck(sourceSquare, targetSquare, piece) {
+    return onPromotionCheck(
+      sourceSquare,
+      targetSquare,
+      piece,
+      showPromotionDialog
     );
   }
 
   function onPieceDrop(sourceSquare, targetSquare, piece) {
     console.group("[ON PIECE DROP]");
-    console.log("Source square:", sourceSquare);
-    console.log("Target square:", targetSquare);
-    console.log("Piece being moved:", piece);
+    console.log("Function payload: ", sourceSquare, targetSquare, piece);
 
-    if (!sourceSquare) {
+    if (!sourceSquare) { // this edge case is for promotion. onPieceDrop is called when promotion piece is selected with value of sourceSquare as null
       console.log("No source square");
       return false;
     }
@@ -74,11 +47,16 @@ const PlayLocal3 = () => {
           sourceSquare === "e8" &&
           (targetSquare === "a8" || targetSquare === "h8"))
       ) {
-        foundMove = moves.find(
-          (m) =>
-            (m.san === "O-O" && m.to[0] === "g") ||
-            (m.san === "O-O-O" && m.to[0] === "c")
-        );
+        if (targetSquare[0] === "h") {
+          foundMove = moves.find(
+            (m) => m.san === "O-O"
+          );
+        }
+        else {
+          foundMove = moves.find(
+            (m) => m.san === "O-O-O"
+          );
+        }
       }
       if (!foundMove) {
         console.log("No valid move found, including castling. Move rejected.");
@@ -111,11 +89,11 @@ const PlayLocal3 = () => {
       { strict: true }
     );
 
-    if (move === null) {
-      console.log("Move execution failed. Move is invalid.");
-      console.groupEnd();
-      return false;
-    }
+    // if (move === null) {
+    //   console.log("Move execution failed. Move is invalid.");
+    //   console.groupEnd();
+    //   return false;
+    // }
 
     console.log("Move executed successfully. Updating game state.");
     setGame(gameCopy);
@@ -127,30 +105,47 @@ const PlayLocal3 = () => {
     return true;
   }
 
-  function onPromotionCheck(sourceSquare, targetSquare, piece) {
-    if (
-      !(
-        ((piece === "wP" &&
-          sourceSquare[1] === "7" &&
-          targetSquare[1] === "8") ||
-          (piece === "bP" &&
-            sourceSquare[1] === "2" &&
-            targetSquare[1] === "1")) &&
-        Math.abs(sourceSquare.charCodeAt(0) - targetSquare.charCodeAt(0)) <= 1
-      )
-    ) {
-      return false;
+  function onPromotionPieceSelect(piece, promoteFromSquare, promoteToSquare) {
+    console.group("[ON PROMOTION PIECE SELECT]");
+    console.log("Function called with payload:", piece);
+
+    // if no piece passed then user has cancelled dialog, don't make move and reset
+    if (piece) {
+      const gameCopy = new Chess();
+      gameCopy.loadPgn(game.pgn(), { strict: true });
+      const move = gameCopy.move(
+        {
+          from: moveFrom,
+          to: moveTo,
+          promotion: piece[1].toLowerCase(),
+        },
+        { strict: true }
+      );
+
+      // if (move === null) {
+      //   console.log("Promotion move execution failed. Move is invalid.");
+      //   console.groupEnd();
+      //   return false;
+      // }
+
+      console.log("Promotion move executed successfully. Updating game state.");
+      setGame(gameCopy);
+    } else {
+      console.log("No piece selected.");
     }
-    if (showPromotionDialog) {
-      return true;
-    }
-    return false;
+
+    console.log("Resetting moveFrom, moveTo, and hiding promotion dialog.");
+    setMoveFrom("");
+    setMoveTo(null);
+    setShowPromotionDialog(false);
+
+    console.groupEnd();
+    return true;
   }
 
   function onSquareClick(square, piece) {
     console.group("[ON SQUARE CLICK]");
-    console.log("Clicked square:", square);
-    console.log("Clicked piece:", piece);
+    console.log("Function called with payload: ", square);
     console.log("Current moveFrom:", moveFrom);
     console.log("Current moveTo:", moveTo);
 
@@ -228,45 +223,6 @@ const PlayLocal3 = () => {
     console.groupEnd();
   }
 
-  function onPromotionPieceSelect(piece, promoteFromSquare, promoteToSquare) {
-    console.group("[ON PROMOTION PIECE SELECT]");
-    console.log("Selected promotion piece:", piece);
-
-    // if no piece passed then user has cancelled dialog, don't make move and reset
-    if (piece) {
-      console.log("Promotion piece selected. Executing promotion move.");
-      const gameCopy = new Chess();
-      gameCopy.loadPgn(game.pgn(), { strict: true });
-      const move = gameCopy.move(
-        {
-          from: moveFrom,
-          to: moveTo,
-          promotion: piece[1].toLowerCase(),
-        },
-        { strict: true }
-      );
-
-      if (move === null) {
-        console.log("Promotion move execution failed. Move is invalid.");
-        console.groupEnd();
-        return false;
-      }
-
-      console.log("Promotion move executed successfully. Updating game state.");
-      setGame(gameCopy);
-    } else {
-      console.log("No piece selected.");
-    }
-
-    console.log("Resetting moveFrom, moveTo, and hiding promotion dialog.");
-    setMoveFrom("");
-    setMoveTo(null);
-    setShowPromotionDialog(false);
-
-    console.groupEnd();
-    return true;
-  }
-
   return (
     <div
       className="w-[600px]"
@@ -283,13 +239,13 @@ const PlayLocal3 = () => {
         customNotationStyle={{
           fontSize: "15px",
         }}
-        customSquareStyles={generateSquareStyles()}
+        customSquareStyles={generateSquareStyles(moveFrom, game)}
         onPieceDrop={onPieceDrop}
-        onPromotionCheck={onPromotionCheck}
+        onPromotionCheck={handlePromotionCheck}
         onPromotionPieceSelect={onPromotionPieceSelect}
         onSquareClick={onSquareClick}
         position={game.fen()}
-        promotionDialogVariant={"vertical"}
+        promotionDialogVariant={"modal"}
         promotionToSquare={moveTo}
         showPromotionDialog={showPromotionDialog}
       />
@@ -297,4 +253,4 @@ const PlayLocal3 = () => {
   );
 };
 
-export default PlayLocal3;
+export default PlayLocalTest;

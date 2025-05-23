@@ -8,7 +8,7 @@ import Home from "./components/Home";
 import Register from "./components/Register";
 import Stockfish from "./components/Stockfish";
 import PlayLocal from "./components/PlayLocal";
-import PlayLocal3 from "./components/PlayLocal3";
+import PlayLocalTest from "./components/PlayLocalTest";
 
 export default function App() {
   const AppLayout = () => {
@@ -49,8 +49,8 @@ export default function App() {
           element: <PlayLocal />,
         },
         {
-          path: "/local3",
-          element: <PlayLocal3 />,
+          path: "/localtest",
+          element: <PlayLocalTest />,
         },
       ],
     },

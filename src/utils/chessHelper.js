@@ -69,11 +69,11 @@ export const NAVBAR_PHASES = {
   PLAY: "play",
 };
 
-export function getTokenFromCookies() {
-    const cookies = document.cookie.split("; ");
-    const tokenCookie = cookies.find((row) => row.startsWith("token="));
-    return tokenCookie ? tokenCookie.split("=")[1] : null;
-}
+export const createChessInstance = () => {
+    const chessInstance = new Chess();
+    // chessInstance.loadPgn(INITIAL_PGN, {strict: true});
+    return chessInstance;
+};
 
 export function formatTime(milliseconds) {
     if (!milliseconds || milliseconds <= 0) return "00:00";
@@ -87,25 +87,49 @@ export function formatTime(milliseconds) {
     )}`;
 }
 
-export function playMoveSound(moveObject) {
-    if (moveObject.isKingsideCastle() || moveObject.isQueensideCastle()) {
-        playSound(sound_castle);
-        return true;
-    }
-    if (moveObject.isPromotion()) {
-        playSound(sound_promote);
-        return true;
-    }
-    if (moveObject.isCapture()) {
-        playSound(sound_capture);
-        return true;
-    }
-    return false;
+export function generateSquareStyles(moveFrom, game) {
+    const optionSquares = {};
+    if (!moveFrom) return optionSquares;
+
+    game.board().flat(1).forEach((s) => {
+        if (s) {
+            optionSquares[s.square] = { cursor: "pointer" }
+        }
+    })
+
+    const moves = game.moves({
+        square: moveFrom,
+        verbose: true,
+    });
+
+    optionSquares[moveFrom]["background"] = "rgba(255, 255, 0, 0.4)"
+
+    moves.map((move) => {
+        optionSquares[move.to] = {
+            background:
+                game.get(move.to) &&
+                    game.get(move.to).color !== game.get(moveFrom).color
+                    ? "radial-gradient(circle, rgba(0,0,0,.3) 85%, transparent 85%)"
+                    : "radial-gradient(circle, rgba(0,0,0,.3) 25%, transparent 25%)",
+            borderRadius: "50%",
+        };
+        return move;
+    });
+    return optionSquares;
 }
 
-export function playSound(sound) {
-    sound.currentTime = 0;
-    sound.play();
+export function getTokenFromCookies() {
+    const cookies = document.cookie.split("; ");
+    const tokenCookie = cookies.find((row) => row.startsWith("token="));
+    return tokenCookie ? tokenCookie.split("=")[1] : null;
+}
+
+export function isPromotionMove(foundMove) {
+    return (
+        foundMove.piece === "p" &&
+        ((foundMove.color === "w" && foundMove.to[1] === "8") ||
+            (foundMove.color === "b" && foundMove.to[1] === "1"))
+    );
 }
 
 export function makeChessMove(moveObject, chessInstance) {
@@ -129,28 +153,45 @@ export function makeChessMove(moveObject, chessInstance) {
     }
 }
 
-export const createChessInstance = () => {
-    const chessInstance = new Chess();
-    // chessInstance.loadPgn(INITIAL_PGN, {strict: true});
-    return chessInstance;
-};
-
-export function generateSquareStyles(moveFrom, chess) {
-    const squareStyles = {};
-    if (!moveFrom) return squareStyles;
-
-    squareStyles[moveFrom] = { background: "rgba(255, 255, 0, 0.4)" };
-    for (let chessMove of chess.moves({ square: moveFrom, verbose: true })) {
-        squareStyles[chessMove["to"]] = {
-            background:
-                chess.get(chessMove["to"]) &&
-                    chess.get(chessMove["to"]).color !== chess.get(moveFrom).color
-                    ? "radial-gradient(circle, rgba(0,0,0,.1) 85%, transparent 85%)"
-                    : "radial-gradient(circle, rgba(0,0,0,.1) 25%, transparent 25%)",
-            borderRadius: "50%",
-        };
+export function onPromotionCheck(sourceSquare, targetSquare, piece, showPromotionDialog) {
+    if (
+        !(
+            ((piece === "wP" &&
+                sourceSquare[1] === "7" &&
+                targetSquare[1] === "8") ||
+                (piece === "bP" &&
+                    sourceSquare[1] === "2" &&
+                    targetSquare[1] === "1")) &&
+            Math.abs(sourceSquare.charCodeAt(0) - targetSquare.charCodeAt(0)) <= 1
+        )
+    ) {
+        return false;
     }
-    return squareStyles;
+    if (showPromotionDialog) {
+        return true;
+    }
+    return false;
+}
+
+export function playMoveSound(moveObject) {
+    if (moveObject.isKingsideCastle() || moveObject.isQueensideCastle()) {
+        playSound(sound_castle);
+        return true;
+    }
+    if (moveObject.isPromotion()) {
+        playSound(sound_promote);
+        return true;
+    }
+    if (moveObject.isCapture()) {
+        playSound(sound_capture);
+        return true;
+    }
+    return false;
+}
+
+export function playSound(sound) {
+    sound.currentTime = 0;
+    sound.play();
 }
 
 export function safeGameMutate(modify, setChess) {
