@@ -138,19 +138,17 @@ export function makeChessMove(moveObject, chessInstance) {
     const newChess = new Chess();
     newChess.loadPgn(chessInstance.pgn());
 
-    try {
-        const latestMove = newChess.move(moveObject);
-        console.log("Move successful:", latestMove.san);
-        console.groupEnd();
-
-        return { success: true, latestMove, newChess };
-    } catch (error) {
-        console.error("Invalid move:", error);
+    const latestMove = newChess.move(moveObject, {strict: true});
+    if (!latestMove) {
+        console.error("Invalid move");
         console.error("FEN", newChess.fen());
-        console.groupEnd();
         playSound(sound_illegal);
-        return { success: false };
     }
+    else {
+        console.log("Move successful:", latestMove.san);
+    }
+    console.groupEnd();
+    return {latestMove, newChess};
 }
 
 export function onPromotionCheck(sourceSquare, targetSquare, piece, showPromotionDialog) {
@@ -194,19 +192,19 @@ export function playSound(sound) {
     sound.play();
 }
 
-export function safeGameMutate(modify, setChess) {
-    let isSuccessful = false;
-    setChess((game) => {
-      try {
-        const update = new Chess();
-        update.loadPgn(game.pgn());
-        modify(update);
-        isSuccessful = true;
-        return update;
-      } catch {
-        return game;
-      }
-    });
+// export function safeGameMutate(modify, setChess) {
+//     let isSuccessful = false;
+//     setChess((game) => {
+//       try {
+//         const update = new Chess();
+//         update.loadPgn(game.pgn());
+//         modify(update);
+//         isSuccessful = true;
+//         return update;
+//       } catch {
+//         return game;
+//       }
+//     });
 
-    return isSuccessful;
-}
+//     return isSuccessful;
+// }

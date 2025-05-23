@@ -12,7 +12,7 @@ const PlayLocalTest = () => {
   const [moveTo, setMoveTo] = useState(null);
   const [showPromotionDialog, setShowPromotionDialog] = useState(false);
 
-  function handlePromotionCheck(sourceSquare, targetSquare, piece) {
+  function checkForPromotion(sourceSquare, targetSquare, piece) {
     return onPromotionCheck(
       sourceSquare,
       targetSquare,
@@ -27,6 +27,7 @@ const PlayLocalTest = () => {
 
     if (!sourceSquare) { // this edge case is for promotion. onPieceDrop is called when promotion piece is selected with value of sourceSquare as null
       console.log("No source square");
+      console.groupEnd();
       return false;
     }
 
@@ -241,7 +242,7 @@ const PlayLocalTest = () => {
         }}
         customSquareStyles={generateSquareStyles(moveFrom, game)}
         onPieceDrop={onPieceDrop}
-        onPromotionCheck={handlePromotionCheck}
+        onPromotionCheck={checkForPromotion}
         onPromotionPieceSelect={onPromotionPieceSelect}
         onSquareClick={onSquareClick}
         position={game.fen()}

@@ -8,8 +8,11 @@ import PlayerTile from "./PlayerTile";
 import StatusBar from "./StatusBar";
 
 import {
+  createChessInstance,
   generateSquareStyles,
+  isPromotionMove,
   makeChessMove,
+  onPromotionCheck,
   playMoveSound,
   playSound,
 } from "../utils/chessHelper";
@@ -25,19 +28,20 @@ const GAME_PHASES = {
 };
 
 const PlayLocal = () => {
-  const [chess, setChess] = useState(new Chess());
-  const [moveFrom, setMoveFrom] = useState("");
-  const [showPromotionDialog, setShowPromotionDialog] = useState(false);
-
+  const [chess, setChess] = useState(createChessInstance);
   const history = chess.history();
   const [historyIndex, setHistoryIndex] = useState(-1);
+
+  const [moveFrom, setMoveFrom] = useState("");
+  const [moveTo, setMoveTo] = useState(null);
+  const [showPromotionDialog, setShowPromotionDialog] = useState(false);
 
   const [gamePhase, setGamePhase] = useState(GAME_PHASES.NOT_STARTED);
 
   const [status, setStatus] = useState("Click on play button to get started");
 
   function beginGame() {
-    console.group("[START GAME]");
+    console.group("[BEGIN GAME]");
     resetState();
     setStatus("Game started! White's turn");
 
@@ -45,6 +49,15 @@ const PlayLocal = () => {
     playSound(sound_game_start);
 
     console.groupEnd();
+  }
+
+  function checkForPromotion(sourceSquare, targetSquare, piece) {
+    return onPromotionCheck(
+      sourceSquare,
+      targetSquare,
+      piece,
+      showPromotionDialog
+    );
   }
 
   function endGame(reason, loser) {
@@ -60,70 +73,24 @@ const PlayLocal = () => {
 
   function getGameOverDetails(chessInstance) {
     if (chessInstance.isCheckmate()) {
-      const loser = chessInstance.turn() === "w" ? "white" : "black";
-      return { reason: "checkmate", loser };
+      const loser = chessInstance.turn() === "w" ? "White" : "Black";
+      return { reason: "Checkmate", loser };
     }
     if (chessInstance.isStalemate()) {
-      return { reason: "stalemate", loser: null };
+      return { reason: "Stalemate" };
     }
     if (chessInstance.isThreefoldRepetition()) {
-      return { reason: "threefold repetition", loser: null };
+      return { reason: "Threefold repetition" };
     }
     if (chessInstance.isInsufficientMaterial()) {
-      return { reason: "insufficient material", loser: null };
+      return { reason: "Insufficient material" };
     }
     if (chessInstance.isDraw()) {
-      return { reason: "draw", loser: null };
+      return { reason: "Draw" };
     }
   }
 
-  function handlePieceClick(piece, square) {
-    console.group("[HANDLE PIECE CLICK]");
-    if (gamePhase !== GAME_PHASES.ONGOING) {
-      console.groupEnd();
-      return;
-    }
-
-    console.log("Function called with payload:", piece, square);
-
-    if (!moveFrom) {
-      setMoveFrom(square);
-      console.groupEnd();
-      return;
-    }
-
-    const moves = chess.moves({ square: moveFrom, verbose: true });
-    const foundMove = moves.find((m) => m.from === moveFrom && m.to === square);
-    if (!foundMove) {
-      setMoveFrom(chess.get(square) ? square : "");
-      console.groupEnd();
-      return;
-    }
-
-    if (
-      (foundMove.color === "w" &&
-        foundMove.piece === "p" &&
-        square[1] === "8") ||
-      (foundMove.color === "b" && foundMove.piece === "p" && square[1] === "1")
-    ) {
-      setShowPromotionDialog(true);
-      console.groupEnd();
-      return;
-    }
-    const moveObject = {
-      from: moveFrom,
-      to: square,
-    };
-    const { success, newChess, latestMove } = makeChessMove(moveObject, chess);
-    if (success) {
-      onMoveSuccess(latestMove, newChess);
-    }
-
-    setMoveFrom("");
-    console.groupEnd();
-  }
-
-  function handlePieceDrop(sourceSquare, targetSquare, piece) {
+  function onPieceDrop(sourceSquare, targetSquare, piece) {
     console.group("[PIECE DROP]");
 
     if (gamePhase !== GAME_PHASES.ONGOING) {
@@ -139,6 +106,13 @@ const PlayLocal = () => {
       return false;
     }
 
+    if (!sourceSquare) {
+      // this edge case is for promotion. onPieceDrop is called when promotion piece is selected with value of sourceSquare as null
+      console.log("No source square");
+      console.groupEnd();
+      return false;
+    }
+
     console.log(
       "Function called with payload",
       sourceSquare,
@@ -146,85 +120,86 @@ const PlayLocal = () => {
       piece
     );
 
-    const moveObject = {
-      from: sourceSquare,
-      to: targetSquare,
-    };
+    const moves = chess.moves({
+      square: sourceSquare,
+      verbose: true,
+    });
+    console.log("Available moves from source square:", moves);
 
-    const { success, latestMove, newChess } = makeChessMove(moveObject, chess);
-    setMoveFrom("");
-    if (!success) {
+    let foundMove = moves.find((m) => m.to === targetSquare);
+    if (!foundMove) {
+      console.log("No direct move found. Checking for castling moves.");
+      if (
+        (piece === "wK" &&
+          sourceSquare === "e1" &&
+          (targetSquare === "a1" || targetSquare === "h1")) ||
+        (piece === "bK" &&
+          sourceSquare === "e8" &&
+          (targetSquare === "a8" || targetSquare === "h8"))
+      ) {
+        if (targetSquare[0] === "h") {
+          foundMove = moves.find((m) => m.san === "O-O");
+        } else {
+          foundMove = moves.find((m) => m.san === "O-O-O");
+        }
+      }
+      if (!foundMove) {
+        console.log("No valid move found, including castling. Move rejected.");
+        console.groupEnd();
+        return false;
+      }
+
+      console.log("Found move:", foundMove);
+
+      console.log("Setting moveFrom and moveTo.");
+      setMoveFrom(foundMove.from);
+      setMoveTo(foundMove.to);
+
+      if (isPromotionMove(foundMove)) {
+        console.log("Promotion move detected. Showing promotion dialog.");
+        setShowPromotionDialog(true);
+        console.groupEnd();
+        return false;
+      }
+
+      console.log("Executing the move.");
+      const { latestMove, newChess } = makeChessMove(
+        {
+          from: foundMove.from,
+          to: foundMove.to,
+        },
+        chess
+      );
+
+      console.log("Move executed successfully. Updating game state.");
+      onMoveSuccess(latestMove, newChess);
+
+      console.groupEnd();
+      return true;
+    }
+
+    console.log("Found move:", foundMove);
+
+    if (isPromotionMove(foundMove)) {
+      console.log("Promotion move detected. Showing promotion dialog.");
+      setShowPromotionDialog(true);
+      console.log("Setting moveFrom and moveTo.");
+      setMoveFrom(foundMove.from);
+      setMoveTo(foundMove.to);
       console.groupEnd();
       return false;
     }
 
+    console.log("Executing the move.");
+    const { latestMove, newChess } = makeChessMove({
+      from: foundMove.from,
+      to: foundMove.to,
+    }, chess);
+
+    console.log("Move executed successfully. Updating game state.");
+
     onMoveSuccess(latestMove, newChess);
-
     console.groupEnd();
-    return true;
-  }
-
-  function handleSquareClick(square, piece) {
-    console.group("[HANDLE SQUARE CLICK]");
-
-    if (gamePhase !== GAME_PHASES.ONGOING) {
-      console.groupEnd();
-      return;
-    }
-
-    if (square === moveFrom) {
-      setMoveFrom("");
-      console.groupEnd();
-      return;
-    }
-
-    if (chess.get(square)) {
-      console.groupEnd();
-      return;
-    }
-    if (!moveFrom) {
-      console.groupEnd();
-      return;
-    }
-
-    console.log("Function called with payload", piece, square);
-    const moveObject = {
-      from: moveFrom,
-      to: square,
-    };
-    const { success, newChess, latestMove } = makeChessMove(moveObject, chess);
-    if (success) {
-      onMoveSuccess(latestMove, newChess);
-    }
-    setMoveFrom("");
-    console.groupEnd();
-  }
-
-  function onPromotionPieceSelect(piece, promoteFromSquare, promoteToSquare) {
-    console.group("[ON PROMOTION PIECE SELECT");
-
-    // if no piece passed then user has cancelled dialog, don't make move and reset
-    if (piece) {
-      console.log("Function called with payload", piece, promoteFromSquare, promoteToSquare);
-
-      const moveObject = {
-        from: promoteFromSquare,
-        to: promoteToSquare,
-        promotion: piece,
-      };
-      const { success, newChess, latestMove } = makeChessMove(moveObject, chess);
-
-      setMoveFrom("");
-      setShowPromotionDialog(false);
-      console.groupEnd();
-
-      if (success) {
-        onMoveSuccess(latestMove, newChess);
-      }
-      else {
-        return false;
-      }
-    }
     return true;
   }
 
@@ -234,8 +209,12 @@ const PlayLocal = () => {
     setChess(newChess);
     setHistoryIndex(newChess.history().length - 1);
 
+    setMoveFrom("");
+    setMoveTo(null);
+    setShowPromotionDialog(false);
+
     if (newChess.isGameOver()) {
-      const { reason, loser } = getGameOverDetails(newChess);
+      const { reason, loser = null } = getGameOverDetails(newChess);
       endGame(reason, loser);
     } else {
       setStatus(`${newChess.turn() === "w" ? "White" : "Black"}'s turn`);
@@ -247,12 +226,138 @@ const PlayLocal = () => {
     console.groupEnd();
   }
 
+  function onPromotionPieceSelect(piece, promoteFromSquare, promoteToSquare) {
+    console.group("[ON PROMOTION PIECE SELECT]");
+    console.log("Function called with payload:", piece);
+
+    // if no piece passed then user has cancelled dialog, don't make move and reset
+    if (piece) {
+
+      const { latestMove, newChess } = makeChessMove({
+        from: moveFrom,
+        to: moveTo,
+        promotion: piece[1].toLowerCase(),
+      }, chess);
+
+      onMoveSuccess(latestMove, newChess);
+
+      // if (move === null) {
+      //   console.log("Promotion move execution failed. Move is invalid.");
+      //   console.groupEnd();
+      //   return false;
+      // }
+
+      console.log("Promotion move executed successfully. Updating game state.");
+    } else {
+      console.log("No piece selected.");
+    }
+
+    console.log("Resetting moveFrom, moveTo, and hiding promotion dialog.");
+    setMoveFrom("");
+    setMoveTo(null);
+    setShowPromotionDialog(false);
+
+    console.groupEnd();
+    return true;
+  }
+
+  function onSquareClick(square, piece) {
+    console.group("[ON SQUARE CLICK]");
+
+    if (gamePhase !== GAME_PHASES.ONGOING) {
+      console.log("No ongoing game", gamePhase);
+      console.groupEnd();
+      return false;
+    }
+
+    if (historyIndex !== history.length - 1) {
+      console.log("Rejecting move due to history mismatch");
+      setHistoryIndex(history.length - 1);
+      console.groupEnd();
+      return false;
+    }
+
+    if (square === moveFrom) {
+      console.log("Clicked the same square as moveFrom. Resetting moveFrom.");
+      setMoveFrom("");
+      console.groupEnd();
+      return;
+    }
+
+    console.log("Function called with payload: ", square);
+    console.log("Current moveFrom:", moveFrom);
+    console.log("Current moveTo:", moveTo);
+
+    // from square
+    if (!moveFrom) {
+      if (chess.get(square)) {
+        console.log("Setting moveFrom to:", square);
+        setMoveFrom(square);
+      } else {
+        console.log("Clicked an empty square. No action taken.");
+      }
+    }
+    // to square
+    else if (!moveTo) {
+      console.log("Attempting to move from:", moveFrom, "to:", square);
+
+      // check if valid move before showing dialog
+      const moves = chess.moves({
+        square: moveFrom,
+        verbose: true,
+      });
+      console.log("Available moves from moveFrom:", moves);
+
+      const foundMove = moves.find((m) => m.to === square);
+      if (!foundMove) {
+        console.log("Invalid move. Checking if clicked on a new piece.");
+        setMoveFrom(chess.get(square) ? square : "");
+        console.groupEnd();
+        return;
+      }
+
+      console.log("Valid move found:", foundMove);
+      setMoveTo(square);
+
+      // if promotion move
+      if (isPromotionMove(foundMove)) {
+        console.log("Promotion move detected. Showing promotion dialog.");
+        setShowPromotionDialog(true);
+        console.groupEnd();
+        return;
+      }
+
+      // is normal move
+      console.log("Executing normal move.");
+
+      const { latestMove, newChess } = makeChessMove({
+        from: moveFrom,
+        to: square,
+      }, chess);
+
+      // if (latestMove) {
+        onMoveSuccess(latestMove, newChess);
+        console.log("Move executed successfully. Updating game state.");
+      // }
+      // else {
+      //   console.log("Move is invalid. Resetting moveFrom.");
+      //   if (chess.get(square)) setMoveFrom(square);
+      // }
+    }
+
+    console.groupEnd();
+  }
+
   function resetState() {
     console.group("[RESET STATE]");
     setChess(new Chess());
     setHistoryIndex(-1);
     setStatus("Click on new game button to get started");
+
     setMoveFrom("");
+    setMoveTo(null);
+    setShowPromotionDialog(false);
+
     console.groupEnd();
   }
 
@@ -271,6 +376,11 @@ const PlayLocal = () => {
 
       return prev;
     });
+
+    setMoveFrom("");
+    setMoveTo(null);
+    setShowPromotionDialog(false);
+
     console.groupEnd();
   }
 
@@ -286,6 +396,8 @@ const PlayLocal = () => {
             className="w-full"
             onBlur={() => {
               setMoveFrom("");
+              setMoveTo(null);
+              setShowPromotionDialog(false);
             }}
             tabIndex={0}
           >
@@ -294,16 +406,21 @@ const PlayLocal = () => {
                 historyIndex === chess.history().length - 1 ? 200 : 0
               }
               areArrowsAllowed={false}
+              customNotationStyle={{
+                fontSize: "15px",
+              }}
               customSquareStyles={generateSquareStyles(moveFrom, chess)}
-              onPieceClick={handlePieceClick}
-              onPieceDrop={handlePieceDrop}
+              onPieceDrop={onPieceDrop}
+              onPromotionCheck={checkForPromotion}
               onPromotionPieceSelect={onPromotionPieceSelect}
-              onSquareClick={handleSquareClick}
+              onSquareClick={onSquareClick}
               position={
                 historyIndex === -1
                   ? "start"
                   : chess.history({ verbose: true })[historyIndex]["after"]
               }
+              promotionDialogVariant="modal"
+              promotionToSquare={moveTo}
               showPromotionDialog={showPromotionDialog}
             />
           </div>
@@ -316,12 +433,12 @@ const PlayLocal = () => {
           {/* Chess buttons */}
           <div className="mb-4">
             <div className="flex justify-evenly">
-              <button
+              {gamePhase !== GAME_PHASES.NOT_STARTED && (<button
                 onClick={undoMove}
                 className="bg-blue-600 text-white font-bold text-base md:text-lg px-4 py-2 rounded-lg cursor-pointer hover:bg-blue-500 transition duration-200"
               >
                 Undo move
-              </button>
+              </button>)}
 
               <button
                 onClick={beginGame}
