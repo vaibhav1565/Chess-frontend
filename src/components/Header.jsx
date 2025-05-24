@@ -35,7 +35,6 @@ const Header = () => {
           }
 
           const json = await res.json();
-          console.log(json);
           dispatch(addUser(json));
         } catch (e) {
           // if (

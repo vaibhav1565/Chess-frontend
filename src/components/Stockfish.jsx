@@ -32,6 +32,8 @@ const GAME_PHASES = {
   ENDED: "ended",
 };
 
+console.clear();
+
 const Stockfish = () => {
   const user = useSelector((store) => store.user);
 
@@ -172,7 +174,7 @@ const Stockfish = () => {
   }
 
   function onPieceDrop(sourceSquare, targetSquare, piece) {
-    console.group("[PIECE DROP]");
+    console.group("[ON PIECE DROP]");
     if (gamePhase !== GAME_PHASES.ONGOING) {
       console.log("No ongoing game", gamePhase);
       console.groupEnd();
@@ -232,7 +234,6 @@ const Stockfish = () => {
         return false;
       }
     }
-
     console.log("Found move:", foundMove);
 
     if (isPromotionMove(foundMove)) {
@@ -294,6 +295,13 @@ const Stockfish = () => {
   function onSquareClick(square, piece) {
     console.group("[ON SQUARE CLICK]");
 
+    if (square === moveFrom) {
+      console.log("Clicked the same square as moveFrom. Resetting moveFrom.");
+      setMoveFrom("");
+      console.groupEnd();
+      return;
+    }
+
     if (gamePhase !== GAME_PHASES.ONGOING) {
       console.log("No ongoing game", gamePhase);
       console.groupEnd();
@@ -309,13 +317,6 @@ const Stockfish = () => {
 
     if (chess.turn() != userColor) {
       console.log("Not your turn", chess.turn(), userColor);
-      console.groupEnd();
-      return;
-    }
-
-    if (square === moveFrom) {
-      console.log("Clicked the same square as moveFrom. Resetting moveFrom.");
-      setMoveFrom("");
       console.groupEnd();
       return;
     }
@@ -496,6 +497,7 @@ const Stockfish = () => {
                   ? "black"
                   : "white"
               }
+              customDropSquareStyle={{ boxShadow: "inset 0 0 1px 6px yellow" }}
               customNotationStyle={{
                 fontSize: "15px",
               }}

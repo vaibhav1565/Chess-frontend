@@ -27,6 +27,8 @@ const GAME_PHASES = {
   ENDED: "ended",
 };
 
+console.clear();
+
 const PlayLocal = () => {
   const [chess, setChess] = useState(createChessInstance);
   const history = chess.history();
@@ -343,6 +345,7 @@ const PlayLocal = () => {
                 historyIndex === chess.history().length - 1 ? 200 : 0
               }
               areArrowsAllowed={false}
+              customDropSquareStyle={{ boxShadow: "inset 0 0 1px 6px yellow" }}
               customNotationStyle={{
                 fontSize: "15px",
               }}
@@ -370,12 +373,14 @@ const PlayLocal = () => {
           {/* Chess buttons */}
           <div className="mb-4">
             <div className="flex justify-evenly">
-              {gamePhase !== GAME_PHASES.NOT_STARTED && (<button
-                onClick={undoMove}
-                className="bg-blue-600 text-white font-bold text-base md:text-lg px-4 py-2 rounded-lg cursor-pointer hover:bg-blue-500 transition duration-200"
-              >
-                Undo move
-              </button>)}
+              {gamePhase !== GAME_PHASES.NOT_STARTED && (
+                <button
+                  onClick={undoMove}
+                  className="bg-blue-600 text-white font-bold text-base md:text-lg px-4 py-2 rounded-lg cursor-pointer hover:bg-blue-500 transition duration-200"
+                >
+                  Undo move
+                </button>
+              )}
 
               <button
                 onClick={beginGame}

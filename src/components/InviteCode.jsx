@@ -17,7 +17,7 @@ const InviteCode = ({isGenerating, createInviteCode, inviteCode}) => {
         <p>Click to generate invite code</p>
       )}
       <button
-        className="absolute top-2 right-2 bg-slate-600 hover:bg-slate-700 text-xs text-white px-2 py-1 rounded-md transition-colors duration-200 shadow-sm"
+        className="absolute top-2 right-2 bg-slate-600 hover:bg-slate-700 text-white px-2 py-1 text-lg rounded-md transition-colors duration-200 shadow-sm md:text-sm"
         onClick={(e) => {
           e.stopPropagation();
           navigator.clipboard.writeText(inviteCode);

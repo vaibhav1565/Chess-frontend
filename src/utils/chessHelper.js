@@ -89,13 +89,12 @@ export function formatTime(milliseconds) {
 
 export function generateSquareStyles(moveFrom, game) {
     const optionSquares = {};
-    if (!moveFrom) return optionSquares;
-
     game.board().flat(1).forEach((s) => {
         if (s) {
             optionSquares[s.square] = { cursor: "pointer" }
         }
     })
+    if (!moveFrom) return optionSquares;
 
     const moves = game.moves({
         square: moveFrom,
@@ -104,7 +103,7 @@ export function generateSquareStyles(moveFrom, game) {
 
     optionSquares[moveFrom]["background"] = "rgba(255, 255, 0, 0.4)"
 
-    moves.map((move) => {
+    moves.forEach((move) => {
         optionSquares[move.to] = {
             background:
                 game.get(move.to) &&
@@ -113,7 +112,6 @@ export function generateSquareStyles(moveFrom, game) {
                     : "radial-gradient(circle, rgba(0,0,0,.3) 25%, transparent 25%)",
             borderRadius: "50%",
         };
-        return move;
     });
     return optionSquares;
 }

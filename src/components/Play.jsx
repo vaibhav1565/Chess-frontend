@@ -12,6 +12,9 @@ import {
   createChessInstance,
   GAME_PHASES,
   NAVBAR_PHASES,
+  generateSquareStyles,
+  onPromotionCheck,
+  isPromotionMove,
 } from "../utils/chessHelper";
 
 import {
@@ -57,8 +60,11 @@ const Play = () => {
 
   const [chess, setChess] = useState(createChessInstance);
   const history = chess.history();
-  // const [historyIndex, setHistoryIndex] = useState(29);
   const [historyIndex, setHistoryIndex] = useState(-1);
+
+  const [moveFrom, setMoveFrom] = useState("");
+  const [moveTo, setMoveTo] = useState(null);
+  const [showPromotionDialog, setShowPromotionDialog] = useState(false);
 
   const [timeConfig, setTimeConfig] = useState({
     minutes: 3,
@@ -188,6 +194,7 @@ const Play = () => {
     const token = getTokenFromCookies();
     if (!token) {
       console.log("[SOCKET] No authentication token found");
+      setStatus("Login/Sign up to get started");
       return;
     }
 
@@ -305,6 +312,15 @@ const Play = () => {
 
     playSound(sound_game_start);
     console.groupEnd();
+  }
+
+  function checkForPromotion(sourceSquare, targetSquare, piece) {
+    return onPromotionCheck(
+      sourceSquare,
+      targetSquare,
+      piece,
+      showPromotionDialog
+    );
   }
 
   function createInviteCode() {
@@ -430,68 +446,8 @@ const Play = () => {
     console.groupEnd();
   }
 
-  function handlePieceDrop(sourceSquare, targetSquare, piece) {
-    console.group("[PIECE DROP]");
-    console.log("Payload:", {
-      sourceSquare,
-      targetSquare,
-      piece,
-    });
-
-    if (gamePhase !== GAME_PHASES.ONGOING) {
-      console.log("Rejecting due to game phase:", gamePhase);
-      console.groupEnd();
-      return false;
-    }
-
-    if (historyIndex !== history.length - 1) {
-      console.log("Rejecting move due to history mismatch");
-      setHistoryIndex(history.length - 1);
-      console.groupEnd();
-      return false;
-    }
-
-    if (gameState.playerColor !== chess.turn()) {
-      console.log("Rejecting due to turn mismatch");
-      console.groupEnd();
-      return false;
-    }
-
-    const moveObject = {
-      from: sourceSquare,
-      to: targetSquare,
-      promotion: piece[1].toLowerCase(),
-    };
-
-    const { success, latestMove, newChess } = makeChessMove(moveObject, chess);
-    if (success === false) {
-      console.log("Move not successful");
-      console.groupEnd();
-      return false;
-    }
-
-    console.log("Move successful, sending to server:", moveObject);
-    if (sendMessage(MESSAGE_TYPES.MOVE, moveObject)) {
-      setChess(newChess);
-      setHistoryIndex((prev) => prev + 1);
-      if (!handleGameOver(newChess)) {
-        startTimer(false);
-      }
-    } else {
-      console.log("Failed to send move to server");
-      console.groupEnd();
-      return false;
-    }
-
-    if (!playMoveSound(latestMove)) {
-      playSound(sound_move_self);
-    }
-    console.groupEnd();
-    return true;
-  }
-
   function handleStartGame() {
-    console.group("[START GAME]");
+    console.group("[HANDLE START GAME]");
 
     if (
       gamePhase === GAME_PHASES.ONGOING ||
@@ -573,6 +529,237 @@ const Play = () => {
     console.groupEnd();
   }
 
+  function onPieceDrop(sourceSquare, targetSquare, piece) {
+    console.group("[ON PIECE DROP]");
+
+    if (gamePhase !== GAME_PHASES.ONGOING) {
+      console.log("Rejecting due to game phase:", gamePhase);
+      console.groupEnd();
+      return false;
+    }
+
+    if (historyIndex !== history.length - 1) {
+      console.log("Rejecting move due to history mismatch");
+      setHistoryIndex(history.length - 1);
+      console.groupEnd();
+      return false;
+    }
+
+    if (gameState.playerColor !== chess.turn()) {
+      console.log("Rejecting due to turn mismatch");
+      console.groupEnd();
+      return false;
+    }
+
+    if (!sourceSquare) {
+      console.log("No source square");
+      console.groupEnd();
+      return false;
+    }
+
+    console.log("Payload:", {
+      sourceSquare,
+      targetSquare,
+      piece,
+    });
+
+    const moves = chess.moves({
+      square: sourceSquare,
+      verbose: true,
+    });
+    console.log("Available moves from source square:", moves);
+
+    let foundMove = moves.find((m) => m.to === targetSquare);
+    if (!foundMove) {
+      console.log("No direct move found. Checking for castling moves.");
+      if (
+        (piece === "wK" &&
+          sourceSquare === "e1" &&
+          (targetSquare === "a1" || targetSquare === "h1")) ||
+        (piece === "bK" &&
+          sourceSquare === "e8" &&
+          (targetSquare === "a8" || targetSquare === "h8"))
+      ) {
+        if (targetSquare[0] === "h") {
+          foundMove = moves.find((m) => m.san === "O-O");
+        } else {
+          foundMove = moves.find((m) => m.san === "O-O-O");
+        }
+      }
+      if (!foundMove) {
+        console.log("No valid move found, including castling. Move rejected.");
+        console.groupEnd();
+        return false;
+      }
+    }
+    console.log("Found move:", foundMove);
+
+    if (isPromotionMove(foundMove)) {
+      console.log("Promotion move detected. Showing promotion dialog.");
+      setShowPromotionDialog(true);
+      console.log("Setting moveFrom and moveTo.");
+      setMoveFrom(foundMove.from);
+      setMoveTo(foundMove.to);
+      console.groupEnd();
+      return false;
+    }
+
+    console.log("Executing the move.");
+    const moveObject = {
+      from: foundMove.from,
+      to: foundMove.to,
+    };
+    const { latestMove, newChess } = makeChessMove(moveObject, chess);
+
+    console.log("Sending move to server-", moveObject);
+    const outcome = onMoveSuccess(latestMove, newChess, moveObject);
+
+    console.groupEnd();
+    return outcome;
+  }
+
+  function onMoveSuccess(latestMove, newChess, moveObject) {
+    if (sendMessage(MESSAGE_TYPES.MOVE, moveObject)) {
+      setChess(newChess);
+      setHistoryIndex((prev) => prev + 1);
+      if (!handleGameOver(newChess)) {
+        startTimer(false);
+        if (!playMoveSound(latestMove)) {
+          playSound(sound_move_self);
+        }
+      }
+    } else {
+      console.log("Failed to send move to server");
+      console.groupEnd();
+      return false;
+    }
+
+    setMoveFrom("");
+    setMoveTo(null);
+    setShowPromotionDialog(false);
+
+    return true;
+  }
+
+  function onPromotionPieceSelect(piece, promoteFromSquare, promoteToSquare) {
+    console.group("[ON PROMOTION PIECE SELECT]");
+    console.log("Function called with payload:", piece);
+
+    if (piece) {
+      const moveObject = {
+        from: moveFrom,
+        to: moveTo,
+        promotion: piece[1].toLowerCase(),
+      };
+      const { latestMove, newChess } = makeChessMove(
+        moveObject,
+        chess
+      );
+
+      const outcome = onMoveSuccess(latestMove, newChess, moveObject);
+      if (outcome)
+      console.log("Promotion move executed successfully. Updating game state.");
+    } else {
+      console.log("No piece selected.");
+    }
+
+    console.log("Resetting moveFrom, moveTo, and hiding promotion dialog.");
+    setMoveFrom("");
+    setMoveTo(null);
+    setShowPromotionDialog(false);
+
+    console.groupEnd();
+    return true;
+  }
+
+  function onSquareClick(square, piece) {
+    console.group("[ON SQUARE CLICK]");
+
+    if (square === moveFrom) {
+      console.log("Clicked the same square as moveFrom. Resetting moveFrom.");
+      setMoveFrom("");
+      console.groupEnd();
+      return;
+    }
+
+    if (gamePhase !== GAME_PHASES.ONGOING) {
+      console.log("No ongoing game", gamePhase);
+      console.groupEnd();
+      return false;
+    }
+
+    if (historyIndex !== history.length - 1) {
+      console.log("Rejecting move due to history mismatch");
+      setHistoryIndex(history.length - 1);
+      console.groupEnd();
+      return false;
+    }
+
+    if (chess.turn() != gameState.playerColor) {
+      console.log("Not your turn", chess.turn(), gameState.playerColor);
+      console.groupEnd();
+      return;
+    }
+
+    console.log("Function called with payload: ", square);
+    console.log("Current moveFrom:", moveFrom);
+    console.log("Current moveTo:", moveTo);
+
+    // from square
+    if (!moveFrom) {
+      if (chess.get(square)) {
+        console.log("Setting moveFrom to:", square);
+        setMoveFrom(square);
+      } else {
+        console.log("Clicked an empty square. No action taken.");
+      }
+    }
+    // to square
+    else if (!moveTo) {
+      console.log("Attempting to move from:", moveFrom, "to:", square);
+
+      // check if valid move before showing dialog
+      const moves = chess.moves({
+        square: moveFrom,
+        verbose: true,
+      });
+      console.log("Available moves from moveFrom:", moves);
+
+      const foundMove = moves.find((m) => m.to === square);
+      if (!foundMove) {
+        console.log("Invalid move. Checking if clicked on a new piece.");
+        setMoveFrom(chess.get(square) ? square : "");
+        console.groupEnd();
+        return;
+      }
+
+      console.log("Valid move found:", foundMove);
+      setMoveTo(square);
+
+      // if promotion move
+      if (isPromotionMove(foundMove)) {
+        console.log("Promotion move detected. Showing promotion dialog.");
+        setShowPromotionDialog(true);
+        console.groupEnd();
+        return;
+      }
+
+      console.log("Executing normal move.");
+      const moveObject = {
+        from: moveFrom,
+        to: square,
+      }
+      const { latestMove, newChess } = makeChessMove(
+        moveObject,
+        chess
+      );
+
+      onMoveSuccess(latestMove, newChess, moveObject);
+    }
+
+    console.groupEnd();
+  }
+
   function rejectDraw() {
     console.group("[REJECT DRAW]");
 
@@ -606,7 +793,6 @@ const Play = () => {
     setIsTimeConfig(false);
     setIsDraw(null);
 
-    // setChatHistory(INITIAL_MESSAGES);
     setChatHistory([]);
     setChatInput("");
     setJoinCodeInput("");
@@ -615,8 +801,10 @@ const Play = () => {
     setGeneratingInviteCode(false);
 
     setChess(createChessInstance);
-    // setHistoryIndex(29);
     setHistoryIndex(-1);
+
+    setMoveFrom("");
+    setMoveTo(null);
 
     console.groupEnd();
   }
@@ -779,7 +967,15 @@ const Play = () => {
               {rivalTime ? formatTime(rivalTime) : "0:00"}
             </p>
           </div>
-          <div className="w-full">
+          <div
+            className="w-full"
+            onBlur={() => {
+              setMoveFrom("");
+              setMoveTo(null);
+              setShowPromotionDialog(false);
+            }}
+            tabIndex={0}
+          >
             <Chessboard
               animationDuration={
                 historyIndex === chess.history().length - 1 ? 300 : 0
@@ -791,12 +987,23 @@ const Play = () => {
                   ? "white"
                   : "black"
               }
-              onPieceDrop={handlePieceDrop}
+              customDropSquareStyle={ {boxShadow: 'inset 0 0 1px 6px yellow' }}
+              customNotationStyle={{
+                fontSize: "15px",
+              }}
+              customSquareStyles={generateSquareStyles(moveFrom, chess)}
+              onPieceDrop={onPieceDrop}
+              onPromotionCheck={checkForPromotion}
+              onPromotionPieceSelect={onPromotionPieceSelect}
+              onSquareClick={onSquareClick}
               position={
                 historyIndex === -1
                   ? "start"
                   : chess.history({ verbose: true })[historyIndex]["after"]
               }
+              promotionDialogVariant="modal"
+              promotionToSquare={moveTo}
+              showPromotionDialog={showPromotionDialog}
             />
           </div>
           <div className="w-full flex justify-between">
@@ -850,6 +1057,14 @@ const Play = () => {
             </div>
           ) : (
             <div className="w-full h-full flex flex-col overflow-hidden">
+              {gamePhase === GAME_PHASES.ENDED && (
+                <button
+                  onClick={resetState}
+                  className="font-bold bg-blue-600 py-2 px-4 rounded-lg shadow-md hover:bg-blue-500 transition duration-200 w-fit mx-auto"
+                >
+                  New Game
+                </button>
+              )}
               <div className="flex flex-col flex-grow overflow-y-auto">
                 {isDraw === gameState.rival._id ? (
                   <DrawScreen acceptDraw={acceptDraw} rejectDraw={rejectDraw} />
@@ -861,14 +1076,6 @@ const Play = () => {
                         historyIndex={historyIndex}
                         setHistoryIndex={setHistoryIndex}
                       />
-                    )}
-                    {gamePhase === GAME_PHASES.ENDED && (
-                      <button
-                        onClick={resetState}
-                        className="font-bold bg-blue-600 py-2 px-4 rounded-lg shadow-md hover:bg-blue-500 transition duration-200 w-fit mx-auto"
-                      >
-                        New Game
-                      </button>
                     )}
                   </>
                 )}
