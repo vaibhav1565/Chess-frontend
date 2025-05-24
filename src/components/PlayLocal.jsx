@@ -1,4 +1,3 @@
-import { Chess } from "chess.js";
 import { useState } from "react";
 import { Chessboard } from "react-chessboard";
 
@@ -10,6 +9,7 @@ import StatusBar from "./StatusBar";
 import {
   createChessInstance,
   generateSquareStyles,
+  getGameOverDetails,
   isPromotionMove,
   makeChessMove,
   onPromotionCheck,
@@ -71,41 +71,20 @@ const PlayLocal = () => {
     console.groupEnd();
   }
 
-  function getGameOverDetails(chessInstance) {
-    if (chessInstance.isCheckmate()) {
-      const loser = chessInstance.turn() === "w" ? "White" : "Black";
-      return { reason: "Checkmate", loser };
-    }
-    if (chessInstance.isStalemate()) {
-      return { reason: "Stalemate" };
-    }
-    if (chessInstance.isThreefoldRepetition()) {
-      return { reason: "Threefold repetition" };
-    }
-    if (chessInstance.isInsufficientMaterial()) {
-      return { reason: "Insufficient material" };
-    }
-    if (chessInstance.isDraw()) {
-      return { reason: "Draw" };
-    }
-  }
-
   function onPieceDrop(sourceSquare, targetSquare, piece) {
-    console.group("[PIECE DROP]");
+    console.group("[ON PIECE DROP]");
 
     if (gamePhase !== GAME_PHASES.ONGOING) {
       console.log("No ongoing game", gamePhase);
       console.groupEnd();
       return false;
     }
-
     if (historyIndex !== history.length - 1) {
       console.log("Rejecting move due to history mismatch");
       setHistoryIndex(history.length - 1);
       console.groupEnd();
       return false;
     }
-
     if (!sourceSquare) {
       // this edge case is for promotion. onPieceDrop is called when promotion piece is selected with value of sourceSquare as null
       console.log("No source square");
@@ -148,34 +127,6 @@ const PlayLocal = () => {
         console.groupEnd();
         return false;
       }
-
-      console.log("Found move:", foundMove);
-
-      console.log("Setting moveFrom and moveTo.");
-      setMoveFrom(foundMove.from);
-      setMoveTo(foundMove.to);
-
-      if (isPromotionMove(foundMove)) {
-        console.log("Promotion move detected. Showing promotion dialog.");
-        setShowPromotionDialog(true);
-        console.groupEnd();
-        return false;
-      }
-
-      console.log("Executing the move.");
-      const { latestMove, newChess } = makeChessMove(
-        {
-          from: foundMove.from,
-          to: foundMove.to,
-        },
-        chess
-      );
-
-      console.log("Move executed successfully. Updating game state.");
-      onMoveSuccess(latestMove, newChess);
-
-      console.groupEnd();
-      return true;
     }
 
     console.log("Found move:", foundMove);
@@ -241,12 +192,6 @@ const PlayLocal = () => {
 
       onMoveSuccess(latestMove, newChess);
 
-      // if (move === null) {
-      //   console.log("Promotion move execution failed. Move is invalid.");
-      //   console.groupEnd();
-      //   return false;
-      // }
-
       console.log("Promotion move executed successfully. Updating game state.");
     } else {
       console.log("No piece selected.");
@@ -288,7 +233,6 @@ const PlayLocal = () => {
     console.log("Current moveFrom:", moveFrom);
     console.log("Current moveTo:", moveTo);
 
-    // from square
     if (!moveFrom) {
       if (chess.get(square)) {
         console.log("Setting moveFrom to:", square);
@@ -297,7 +241,6 @@ const PlayLocal = () => {
         console.log("Clicked an empty square. No action taken.");
       }
     }
-    // to square
     else if (!moveTo) {
       console.log("Attempting to move from:", moveFrom, "to:", square);
 
@@ -335,14 +278,8 @@ const PlayLocal = () => {
         to: square,
       }, chess);
 
-      // if (latestMove) {
         onMoveSuccess(latestMove, newChess);
         console.log("Move executed successfully. Updating game state.");
-      // }
-      // else {
-      //   console.log("Move is invalid. Resetting moveFrom.");
-      //   if (chess.get(square)) setMoveFrom(square);
-      // }
     }
 
     console.groupEnd();
@@ -350,7 +287,7 @@ const PlayLocal = () => {
 
   function resetState() {
     console.group("[RESET STATE]");
-    setChess(new Chess());
+    setChess(createChessInstance);
     setHistoryIndex(-1);
     setStatus("Click on new game button to get started");
 

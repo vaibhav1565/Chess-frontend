@@ -38,12 +38,12 @@ export const MESSAGE_TYPES = {
 };
 
 export const GAME_END_REASONS = {
-    CHECKMATE: 'checkmate',
-    DRAW: 'draw',
-    DRAW_BY_AGREEMENT: 'draw_by_agreement',
-    RESIGN: 'resign',
-    TIMEOUT: 'timeout',
-    ABORT: 'abort'
+    CHECKMATE: 'Checkmate',
+    DRAW: 'Draw',
+    DRAW_BY_AGREEMENT: 'Draw by agreement',
+    RESIGN: 'Resign',
+    TIMEOUT: 'Timeout',
+    ABORT: 'Abortion'
 };
 
 export const WEBSOCKET_MESSAGE_TYPES = {

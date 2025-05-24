@@ -8,7 +8,7 @@ import Home from "./components/Home";
 import Register from "./components/Register";
 import Stockfish from "./components/Stockfish";
 import PlayLocal from "./components/PlayLocal";
-import PlayLocalTest from "./components/PlayLocalTest";
+import ChessBoardTest from "./components/ChessBoardTest";
 
 export default function App() {
   const AppLayout = () => {
@@ -50,7 +50,7 @@ export default function App() {
         },
         {
           path: "/localtest",
-          element: <PlayLocalTest />,
+          element: <ChessBoardTest />,
         },
       ],
     },

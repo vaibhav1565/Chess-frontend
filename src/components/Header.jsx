@@ -4,7 +4,7 @@ import { useDispatch, useSelector } from "react-redux";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { addUser, removeUser } from "../utils/userSlice";
 
-import { BASE_URL } from "../utils/otherConstants";
+import { BASE_URL } from "../utils/otherConstants.jsx";
 
 const Header = () => {
   const dispatch = useDispatch();

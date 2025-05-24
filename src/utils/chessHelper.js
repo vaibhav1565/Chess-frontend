@@ -118,6 +118,25 @@ export function generateSquareStyles(moveFrom, game) {
     return optionSquares;
 }
 
+export function getGameOverDetails(chessInstance) {
+    if (chessInstance.isCheckmate()) {
+        const loser = chessInstance.turn() === "w" ? "White" : "Black";
+        return { reason: "Checkmate", loser };
+    }
+    if (chessInstance.isStalemate()) {
+        return { reason: "Stalemate" };
+    }
+    if (chessInstance.isThreefoldRepetition()) {
+        return { reason: "Threefold repetition" };
+    }
+    if (chessInstance.isInsufficientMaterial()) {
+        return { reason: "Insufficient material" };
+    }
+    if (chessInstance.isDraw()) {
+        return { reason: "Draw" };
+    }
+}
+
 export function getTokenFromCookies() {
     const cookies = document.cookie.split("; ");
     const tokenCookie = cookies.find((row) => row.startsWith("token="));
@@ -132,24 +151,62 @@ export function isPromotionMove(foundMove) {
     );
 }
 
-export function makeChessMove(moveObject, chessInstance) {
-    console.group("[CHESS MOVE]");
+export function makeChessMove(moveObject, chessInstance, isEngine = false) {
+    console.group("[MAKE CHESS MOVE]");
+    console.log("Chess instance history-", chessInstance.history());
+    let newChess, latestMove;
 
-    const newChess = new Chess();
-    newChess.loadPgn(chessInstance.pgn());
+    try {
+        newChess = createChessInstance();
+        newChess.loadPgn(chessInstance.pgn());
 
-    const latestMove = newChess.move(moveObject, {strict: true});
-    if (!latestMove) {
-        console.error("Invalid move");
-        console.error("FEN", newChess.fen());
-        playSound(sound_illegal);
+        latestMove = newChess.move(moveObject);
+        console.log("move object-", latestMove);
+        if (!latestMove) {
+            console.log("Invalid move");
+            console.log("FEN", newChess.fen());
+            playSound(sound_illegal);
+        } else {
+            console.log("Move successful:", latestMove.san);
+        }
+    } catch (error) {
+        console.error("Error making chess move:", error);
+
+        if (!isEngine) playSound(sound_illegal);
+        newChess = chessInstance; // fallback to original instance
+        latestMove = null;
     }
-    else {
-        console.log("Move successful:", latestMove.san);
-    }
+
     console.groupEnd();
-    return {latestMove, newChess};
+    return { latestMove, newChess };
 }
+
+// export function makeChessMove(moveObject, chessInstance) {
+//     console.group("[MAKE CHESS MOVE]");
+//     console.log("Chess instance history-", chessInstance.history());
+//     let newChess, latestMove;
+
+//     try {
+//         newChess = chessInstance;
+
+//         latestMove = newChess.move(moveObject);
+//         console.log("move object-", latestMove);
+//         if (!latestMove) {
+//             console.log("Invalid move");
+//             console.log("FEN", newChess.fen());
+//             playSound(sound_illegal);
+//         } else {
+//             console.log("Move successful:", latestMove.san);
+//         }
+//     } catch (error) {
+//         console.error("Error making chess move:", error);
+//         playSound(sound_illegal);
+//         latestMove = null;
+//     }
+
+//     console.groupEnd();
+//     return { latestMove, newChess };
+// }
 
 export function onPromotionCheck(sourceSquare, targetSquare, piece, showPromotionDialog) {
     if (
@@ -192,19 +249,19 @@ export function playSound(sound) {
     sound.play();
 }
 
-// export function safeGameMutate(modify, setChess) {
-//     let isSuccessful = false;
-//     setChess((game) => {
-//       try {
-//         const update = new Chess();
-//         update.loadPgn(game.pgn());
-//         modify(update);
-//         isSuccessful = true;
-//         return update;
-//       } catch {
-//         return game;
-//       }
-//     });
+export function safeGameMutate(modify, setChess) {
+    let isSuccessful = false;
+    setChess((game) => {
+      try {
+        const update = new Chess();
+        update.loadPgn(game.pgn());
+        modify(update);
+        isSuccessful = true;
+        return update;
+      } catch {
+        return game;
+      }
+    });
 
-//     return isSuccessful;
-// }
+    return isSuccessful;
+}

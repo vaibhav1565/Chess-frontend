@@ -68,13 +68,12 @@ const PlayLocalTest = () => {
 
     console.log("Found move:", foundMove);
 
-    console.log("Setting moveFrom and moveTo.");
-    setMoveFrom(foundMove.from);
-    setMoveTo(foundMove.to);
-
     if (isPromotionMove(foundMove)) {
       console.log("Promotion move detected. Showing promotion dialog.");
       setShowPromotionDialog(true);
+      console.log("Setting moveFrom and moveTo.");
+      setMoveFrom(foundMove.from);
+      setMoveTo(foundMove.to);
       console.groupEnd();
       return false;
     }

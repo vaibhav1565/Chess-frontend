@@ -1,4 +1,3 @@
-import { Chess } from "chess.js";
 import { useRef, useState } from "react";
 import { Chessboard } from "react-chessboard";
 import { useSelector } from "react-redux";
@@ -6,8 +5,18 @@ import { COLORS, GAME_END_REASONS } from "../utils/chessConstants";
 import MoveHistory from "./MoveHistory";
 import ChessHistoryButtons from "./ChessHistoryButtons";
 import StatusBar from "./StatusBar";
-import { makeChessMove, playMoveSound, playSound } from "../utils/chessHelper";
-import { BOT_IMAGE } from "../utils/otherConstants";
+import {
+  createChessInstance,
+  generateSquareStyles,
+  getGameOverDetails,
+  isPromotionMove,
+  makeChessMove,
+  onPromotionCheck,
+  playMoveSound,
+  playSound,
+  safeGameMutate,
+} from "../utils/chessHelper";
+import { BOT_SVG } from "../utils/otherConstants.jsx";
 import PlayerTile from "./PlayerTile";
 
 const sound_game_start = new Audio("sounds/game-start.mp3");
@@ -15,7 +24,7 @@ const sound_game_end = new Audio("sounds/game-end.mp3");
 const sound_move_self = new Audio("sounds/move-self.mp3");
 const sound_move_opponent = new Audio("sounds/move-opponent.mp3");
 
-const DEPTH = 16; // number of halfmoves the engine looks ahead
+const DEPTH = 16;
 
 const GAME_PHASES = {
   NOT_STARTED: "not_started",
@@ -26,10 +35,13 @@ const GAME_PHASES = {
 const Stockfish = () => {
   const user = useSelector((store) => store.user);
 
-  const [chess, setChess] = useState(new Chess());
-
+  const [chess, setChess] = useState(createChessInstance);
   const history = chess.history();
   const [historyIndex, setHistoryIndex] = useState(-1);
+
+  const [moveFrom, setMoveFrom] = useState("");
+  const [moveTo, setMoveTo] = useState(null);
+  const [showPromotionDialog, setShowPromotionDialog] = useState(false);
 
   const [userColor, setUserColor] = useState(null);
 
@@ -43,7 +55,7 @@ const Stockfish = () => {
   const stockfish = useRef(null);
 
   function beginGame() {
-    console.group("[START GAME]");
+    console.group("[BEGIN GAME]");
 
     resetState();
 
@@ -60,27 +72,43 @@ const Stockfish = () => {
 
     setUserColor(colorToSet);
 
+    startEngine();
     if (colorToSet === "b") {
-      startEngine();
-      callEngine(chess.fen());
+      callEngine(chess);
     }
 
     playSound(sound_game_start);
     console.groupEnd();
   }
 
-  function callEngine(fen) {
-    console.group("[ENGINE CALL]");
-    console.log("FEN-", fen);
-    stockfish.current.postMessage(`position fen ${fen}`);
+  function callEngine(chessInstance) {
+    console.group("[CALL ENGINE]");
+    console.log("Current instance's board-\n", chessInstance.ascii());
+    const moves = chessInstance.history().join(" ");
+    console.log("Moves till now-", moves);
+    // stockfish.current.postMessage("stop");
+    stockfish.current.postMessage(`position fen ${chessInstance.fen()}`);
     stockfish.current.postMessage(`go depth ${DEPTH}`);
     console.groupEnd();
+  }
+
+  function checkForPromotion(sourceSquare, targetSquare, piece) {
+    return onPromotionCheck(
+      sourceSquare,
+      targetSquare,
+      piece,
+      showPromotionDialog
+    );
   }
 
   function endGame(reason, loser) {
     console.group("[ENDGAME]");
 
-    setStatus(`Game over by ${reason}\n${loser ? `Loser: ${loser}` : ""}`);
+    setStatus(
+      `Game over by ${reason}\n${
+        loser ? `Loser: ${loser === "w" ? "White" : "Black"}` : ""
+      }`
+    );
     setGamePhase(GAME_PHASES.ENDED);
     console.log(`Game ended: ${reason}, ${loser}`);
 
@@ -89,36 +117,61 @@ const Stockfish = () => {
     playSound(sound_game_end);
   }
 
-  function getGameOverDetails(chessInstance) {
-    if (chessInstance.isCheckmate()) {
-      const loser = chessInstance.turn() === "w" ? "white" : "black";
-      return { reason: "checkmate", loser };
-    }
-    if (chessInstance.isStalemate()) {
-      return { reason: "stalemate", loser: null };
-    }
-    if (chessInstance.isThreefoldRepetition()) {
-      return { reason: "threefold repetition", loser: null };
-    }
-    if (chessInstance.isInsufficientMaterial()) {
-      return { reason: "insufficient material", loser: null };
-    }
-    if (chessInstance.isDraw()) {
-      return { reason: "draw", loser: null };
-    }
+  function handleGameOver(chessInstance) {
+    const { reason, loser = null } = getGameOverDetails(chessInstance);
+    endGame(reason, loser);
   }
 
-  function handleGameOver(chessInstance) {
-    console.group("[GAME OVER]");
-    const gameOverDetails = getGameOverDetails(chessInstance);
+  function makeEngineMove(move) {
+    console.group("[MAKE ENGINE MOVE]");
+    console.log("Move object", move);
 
-    const { reason, loser } = gameOverDetails;
-    endGame(reason, loser);
+    setChess((prevChess) => {
+      const { latestMove, newChess } = makeChessMove(move, prevChess, true);
+      if (!latestMove) {
+        console.log("Invalid move");
+        console.groupEnd();
+        return prevChess;
+      }
+
+      setHistoryIndex(newChess.history().length - 1);
+      setStatus(`${userColor === "w" ? "White" : "Black"}'s turn`);
+      if (newChess.isGameOver()) {
+        handleGameOver(newChess);
+      } else if (!playMoveSound(latestMove)) {
+        playSound(sound_move_opponent);
+      }
+      return newChess;
+    });
+    console.groupEnd();
+  }
+
+  function onMoveSuccess(latestMove, newChess) {
+    console.group("[ON MOVE SUCCESS]");
+
+    setChess(newChess);
+    setHistoryIndex(newChess.history().length - 1);
+
+    console.log("newChess history-", newChess.history());
+
+    if (newChess.isGameOver()) {
+      handleGameOver(newChess);
+    } else {
+      callEngine(newChess);
+      setStatus(`${newChess.turn() === "w" ? "White" : "Black"}'s turn`);
+      if (!playMoveSound(latestMove)) {
+        playSound(sound_move_self);
+      }
+    }
+
+    setMoveFrom("");
+    setMoveTo(null);
+    setShowPromotionDialog(false);
 
     console.groupEnd();
   }
 
-  function handlePieceDrop(sourceSquare, targetSquare, piece) {
+  function onPieceDrop(sourceSquare, targetSquare, piece) {
     console.group("[PIECE DROP]");
     if (gamePhase !== GAME_PHASES.ONGOING) {
       console.log("No ongoing game", gamePhase);
@@ -136,84 +189,210 @@ const Stockfish = () => {
       return;
     }
 
-    const moveObject = {
-      from: sourceSquare,
-      to: targetSquare,
-      promotion: piece[1].toLowerCase(), // promotion in case of actual promotion, else, no error,
-    };
-
-    const { success, latestMove, newChess } = makeChessMove(moveObject, chess);
-    if (!success) {
+    if (!sourceSquare) {
+      // this edge case is for promotion. onPieceDrop is called when promotion piece is selected with value of sourceSquare as null
+      console.log("No source square");
       console.groupEnd();
       return false;
     }
 
-    setChess(newChess);
-    setHistoryIndex((prev) => prev + 1);
-    setStatus(`${userColor === "w" ? "Black" : "White"}'s turn`);
+    console.log(
+      "Function called with payload",
+      sourceSquare,
+      targetSquare,
+      piece
+    );
 
-    if (newChess.isGameOver()) {
-      handleGameOver(newChess);
+    const moves = chess.moves({
+      square: sourceSquare,
+      verbose: true,
+    });
+    console.log("Available moves from source square:", moves);
+
+    let foundMove = moves.find((m) => m.to === targetSquare);
+    if (!foundMove) {
+      console.log("No direct move found. Checking for castling moves.");
+      if (
+        (piece === "wK" &&
+          sourceSquare === "e1" &&
+          (targetSquare === "a1" || targetSquare === "h1")) ||
+        (piece === "bK" &&
+          sourceSquare === "e8" &&
+          (targetSquare === "a8" || targetSquare === "h8"))
+      ) {
+        if (targetSquare[0] === "h") {
+          foundMove = moves.find((m) => m.san === "O-O");
+        } else {
+          foundMove = moves.find((m) => m.san === "O-O-O");
+        }
+      }
+      if (!foundMove) {
+        console.log("No valid move found, including castling. Move rejected.");
+        console.groupEnd();
+        return false;
+      }
+    }
+
+    console.log("Found move:", foundMove);
+
+    if (isPromotionMove(foundMove)) {
+      console.log("Promotion move detected. Showing promotion dialog.");
+      setShowPromotionDialog(true);
+      console.log("Setting moveFrom and moveTo.");
+      setMoveFrom(foundMove.from);
+      setMoveTo(foundMove.to);
       console.groupEnd();
-      return true;
+      return false;
     }
 
-    if (!stockfish.current) {
-      startEngine();
-    }
-    callEngine(newChess.fen());
+    console.log("Executing the move.");
+    const { latestMove, newChess } = makeChessMove(
+      {
+        from: foundMove.from,
+        to: foundMove.to,
+      },
+      chess
+    );
 
-    if (!playMoveSound(latestMove)) {
-      playSound(sound_move_self);
-    }
+    console.log("Move executed successfully. Updating game state.");
+    onMoveSuccess(latestMove, newChess);
 
     console.groupEnd();
     return true;
   }
 
-  function makeEngineMove(move) {
-    console.group("[ENGINE MOVE]");
-    console.log("Move object", move);
+  function onPromotionPieceSelect(piece, promoteFromSquare, promoteToSquare) {
+    console.group("[ON PROMOTION PIECE SELECT]");
+    console.log("Function called with payload:", piece);
 
-    setHistoryIndex(history.length - 1);
-    setChess((prevChess) => {
-      try {
-        const newChess = new Chess();
-        newChess.loadPgn(prevChess.pgn());
-        const latestMove = newChess.move(move);
-        setHistoryIndex(newChess.history().length - 1);
-        console.log("Move successful:", latestMove.san);
-        setStatus(`${userColor === "w" ? "White" : "Black"}'s turn`);
-        if (!playMoveSound(latestMove)) {
-          playSound(sound_move_opponent);
-        }
-        if (newChess.isGameOver()) {
-          handleGameOver(newChess);
-        }
-        return newChess;
-      } catch {
-        console.log("Invalid move");
-        return prevChess;
-      } finally {
-        console.groupEnd();
-      }
-    });
+    // if no piece passed then user has cancelled dialog, don't make move and reset
+    if (piece) {
+      const { latestMove, newChess } = makeChessMove(
+        {
+          from: moveFrom,
+          to: moveTo,
+          promotion: piece[1].toLowerCase(),
+        },
+        chess
+      );
+
+      onMoveSuccess(latestMove, newChess);
+      console.log("Promotion move executed successfully. Updating game state.");
+    } else {
+      console.log("No piece selected.");
+    }
+
+    console.log("Resetting moveFrom, moveTo, and hiding promotion dialog.");
+    setMoveFrom("");
+    setMoveTo(null);
+    setShowPromotionDialog(false);
+
+    console.groupEnd();
+    return true;
   }
 
-  function newGame() {
-    resetState();
-    setGamePhase(GAME_PHASES.NOT_STARTED);
+  function onSquareClick(square, piece) {
+    console.group("[ON SQUARE CLICK]");
+
+    if (gamePhase !== GAME_PHASES.ONGOING) {
+      console.log("No ongoing game", gamePhase);
+      console.groupEnd();
+      return false;
+    }
+
+    if (historyIndex !== history.length - 1) {
+      console.log("Rejecting move due to history mismatch");
+      setHistoryIndex(history.length - 1);
+      console.groupEnd();
+      return false;
+    }
+
+    if (chess.turn() != userColor) {
+      console.log("Not your turn", chess.turn(), userColor);
+      console.groupEnd();
+      return;
+    }
+
+    if (square === moveFrom) {
+      console.log("Clicked the same square as moveFrom. Resetting moveFrom.");
+      setMoveFrom("");
+      console.groupEnd();
+      return;
+    }
+
+    console.log("Function called with payload: ", square);
+    console.log("Current moveFrom:", moveFrom);
+    console.log("Current moveTo:", moveTo);
+
+    // from square
+    if (!moveFrom) {
+      if (chess.get(square)) {
+        console.log("Setting moveFrom to:", square);
+        setMoveFrom(square);
+      } else {
+        console.log("Clicked an empty square. No action taken.");
+      }
+    }
+    // to square
+    else if (!moveTo) {
+      console.log("Attempting to move from:", moveFrom, "to:", square);
+
+      // check if valid move before showing dialog
+      const moves = chess.moves({
+        square: moveFrom,
+        verbose: true,
+      });
+      console.log("Available moves from moveFrom:", moves);
+
+      const foundMove = moves.find((m) => m.to === square);
+      if (!foundMove) {
+        console.log("Invalid move. Checking if clicked on a new piece.");
+        setMoveFrom(chess.get(square) ? square : "");
+        console.groupEnd();
+        return;
+      }
+
+      console.log("Valid move found:", foundMove);
+      setMoveTo(square);
+
+      // if promotion move
+      if (isPromotionMove(foundMove)) {
+        console.log("Promotion move detected. Showing promotion dialog.");
+        setShowPromotionDialog(true);
+        console.groupEnd();
+        return;
+      }
+
+      // is normal move
+      console.log("Executing normal move.");
+
+      const { latestMove, newChess } = makeChessMove(
+        {
+          from: moveFrom,
+          to: square,
+        },
+        chess
+      );
+
+      onMoveSuccess(latestMove, newChess);
+    }
+
+    console.groupEnd();
   }
 
   function resetState() {
-    stopEngineCalculation();
-    setChess(new Chess());
+    setChess(createChessInstance);
     setHistoryIndex(-1);
     setStatus("Click on play button to get started");
+
+    setMoveFrom("");
+    setMoveTo(null);
+    setShowPromotionDialog(false);
   }
 
   function resignGame() {
     console.group("[RESIGN GAME]");
+
     if (gamePhase !== GAME_PHASES.ONGOING) {
       console.log("No ongoing game!");
       console.groupEnd();
@@ -226,7 +405,7 @@ const Stockfish = () => {
       return;
     }
 
-    stopEngineCalculation();
+    stockfish.current?.postMessage("stop");
     endGame(GAME_END_REASONS.RESIGN, userColor);
     console.groupEnd();
   }
@@ -234,80 +413,55 @@ const Stockfish = () => {
   function startEngine() {
     console.group("[START ENGINE]");
 
+    if (stockfish.current) return;
+
     stockfish.current = new Worker("./stockfish.js");
     stockfish.current.postMessage("uci");
 
-    try {
-      stockfish.current = new Worker("./stockfish.js");
-      stockfish.current.postMessage("uci");
-
-      stockfish.current.onmessage = (e) => {
-        if (e.data.split(" ")[0] === "bestmove") {
-          console.log(e.data);
-          makeEngineMove(e.data.split(" ")[1]);
-        }
-      };
-    } catch (error) {
-      console.error("Failed to start Stockfish engine:", error);
-      setStatus("Error: Unable to start engine");
-    }
+    stockfish.current.onmessage = (e) => {
+      if (e.data.split(" ")[0] === "bestmove") {
+        console.log(e.data);
+        makeEngineMove(e.data.split(" ")[1]);
+      }
+    };
 
     console.groupEnd();
   }
 
-  function stopEngineCalculation() {
-    if (stockfish.current) {
-      stockfish.current.postMessage("stop");
-    }
-  }
-
   function undoMove() {
-    console.group("[UNDOMOVE]");
-    // if (gamePhase !== GAME_PHASES.ONGOING) {
-    //   console.log("No ongoing game!");
-    //   console.groupEnd();
-    //   return;
-    // }
-    if (!history.length) {
-      console.log("No moves played yet!");
-      console.groupEnd();
+
+    if (historyIndex !== history.length - 1) {
+      console.log("Setting history index to latest value");
+      setHistoryIndex(history.length - 1);
       return;
     }
 
-    stopEngineCalculation();
+    stockfish.current?.postMessage("stop");
 
-    setChess((prev) => {
+    safeGameMutate((prev) => {
       let movesLength = prev.history().length;
       if (movesLength === 0) {
-        return prev;
+        return;
       }
-
       if (gamePhase === GAME_PHASES.ENDED && prev.isGameOver()) {
         setGamePhase(GAME_PHASES.ONGOING);
       }
 
       if (userColor === COLORS.BLACK) {
         if (movesLength === 1) {
-          return prev;
+          return;
         }
         if (movesLength % 2 === 1) {
-          prev.undo();
-          setHistoryIndex((prev) => prev - 1);
+          console.log("prev.undo()", prev.undo());
         }
-      } else {
-        if (movesLength % 2 === 0) {
-          prev.undo();
-          setHistoryIndex((prev) => prev - 1);
-        }
+      } else if (movesLength % 2 === 0) {
+        console.log("prev.undo()", prev.undo());
       }
-      prev.undo();
-      setHistoryIndex(prev.history().length - 1);
-      setStatus(`${prev.turn() === "w" ? "White" : "Black"}'s turn`);
 
-      console.log("New fen:", prev.fen());
-      return prev;
-    });
-    console.groupEnd();
+      console.log("prev.undo()", prev.undo());
+      setHistoryIndex(prev.history().length - 1);
+    }, setChess);
+
   }
 
   return (
@@ -316,12 +470,20 @@ const Stockfish = () => {
       <div className="flex flex-col lg:flex-row items-center justify-center gap-6 py-4 w-full max-w-7xl mx-auto">
         {/* Chessboard and players info */}
         <div className="w-full max-w-[600px] lg:w-2/3 flex flex-col items-center">
-          <PlayerTile playerName="Computer" isBot={true} />
+          <PlayerTile playerName="Computer" />
 
-          <div className="w-full">
+          <div
+            className="w-full"
+            onBlur={() => {
+              setMoveFrom("");
+              setMoveTo(null);
+              setShowPromotionDialog(false);
+            }}
+            tabIndex={0}
+          >
             <Chessboard
               animationDuration={
-                historyIndex === chess.history().length - 1 ? 300 : 0
+                historyIndex === chess.history().length - 1 ? 200 : 0
               }
               areArrowsAllowed={false}
               boardOrientation={
@@ -334,12 +496,22 @@ const Stockfish = () => {
                   ? "black"
                   : "white"
               }
-              onPieceDrop={handlePieceDrop}
+              customNotationStyle={{
+                fontSize: "15px",
+              }}
+              customSquareStyles={generateSquareStyles(moveFrom, chess)}
+              onPieceDrop={onPieceDrop}
+              onPromotionCheck={checkForPromotion}
+              onPromotionPieceSelect={onPromotionPieceSelect}
+              onSquareClick={onSquareClick}
               position={
                 historyIndex === -1
                   ? "start"
                   : chess.history({ verbose: true })[historyIndex]["after"]
               }
+              promotionDialogVariant="modal"
+              promotionToSquare={moveTo}
+              showPromotionDialog={showPromotionDialog}
             />
           </div>
 
@@ -349,11 +521,9 @@ const Stockfish = () => {
         {/* Move history, Chess buttons */}
         <div className="w-full max-w-[600px] lg:w-1/3 lg:h-[680px] p-6 rounded-xl mt-8 lg:mt-0 bg-gradient-to-br from-gray-800 via-gray-700 to-gray-900 shadow-lg border border-gray-600 transition-all duration-300">
           <div className="flex items-center justify-center gap-4 bg-gradient-to-bl from-indigo-700 via-indigo-500 to-indigo-300 px-4 py-3 rounded-2xl mb-6 shadow-md border border-indigo-500 transition-all duration-300">
-            <img
-              className="w-7 h-7 filter drop-shadow-md"
-              src={BOT_IMAGE}
-              alt="Bot icon"
-            />
+            <div className="w-7 h-7 filter drop-shadow-md">
+              <BOT_SVG />
+            </div>
             <h2 className="text-2xl font-bold text-white tracking-wide">
               <span className="bg-clip-text text-white">Play Computer</span>
             </h2>
@@ -365,20 +535,20 @@ const Stockfish = () => {
               <div className="flex justify-around mb-6">
                 {["white", "random", "black"].map((color) => (
                   <button
-                    className={`rounded-xl p-1 cursor-pointer transition-all duration-200 ${
+                    className={`rounded-xl p-2 cursor-pointer transition-all duration-200 ${
                       colorChoice === color
-                        ? "border-4 border-green-600"
-                        : "border-4 border-transparent"
-                    }`}
+                        ? "border-8 border-green-600"
+                        : "border-8 border-transparent"
+                    } 
+                  bg-white text-gray-800
+                    `}
                     key={color}
                     onClick={() => setColorChoice(color)}
                     aria-label={`Pick ${color} color`}
                   >
-                    <img
-                      src={`https://www.chess.com/bundles/web/images/play-side/${color}.svg`}
-                      alt={`${color} piece`}
-                      className="w-10 md:w-14"
-                    />
+                    <span className="font-bold text-lg">
+                      {color.charAt(0).toUpperCase() + color.slice(1)}
+                    </span>
                   </button>
                 ))}
               </div>
@@ -404,7 +574,10 @@ const Stockfish = () => {
                   </button>
                   {/* Rematch button */}
                   <button
-                    onClick={newGame}
+                    onClick={() => {
+                      resetState();
+                      setGamePhase(GAME_PHASES.NOT_STARTED);
+                    }}
                     className="bg-blue-600 text-white font-bold text-base md:text-lg px-4 py-2 rounded-lg cursor-pointer hover:bg-blue-500 transition duration-200"
                   >
                     New game
@@ -440,15 +613,3 @@ const Stockfish = () => {
 };
 
 export default Stockfish;
-
-/*
-Study about-
-uci
-stockfish.js commands
-
-Workers (in detail)
-*/
-
-
-
-/* status, turn (perhaps, in playlocal as well) */
