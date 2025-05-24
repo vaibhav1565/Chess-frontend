@@ -45,8 +45,8 @@ This is the frontend for a full-featured multiplayer and AI chess application, b
 ### 1. Clone the Repository
 
 ```bash
-git clone <your-frontend-repo-url>
-cd chess-frontend
+git clone https://github.com/vaibhav1565/Chess-frontend
+cd Chess-frontend
 ```
 
 ### 2. Install Dependencies
@@ -59,4 +59,4 @@ npm ci
 npm run dev
 ```
 
-📝 Make sure to also have the backend running for full multiplayer functionality.
+### 4. Have the [Chess-backend](https://github.com/vaibhav1565/Chess-backend) running for multiplayer functionality.
